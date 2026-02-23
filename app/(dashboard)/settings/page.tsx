@@ -5,7 +5,7 @@ import { useAuth } from '@/context/auth-context';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bell, Lock, Eye, EyeOff, Save, X, Check } from 'lucide-react';
+import { Bell, Lock, Save, Check } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -14,7 +14,7 @@ export default function SettingsPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [formData, setFormData] = useState({
-    name: 'Security Operations Team',
+    name: 'Mainak sarkar',
     email: user?.email || '',
     role: user?.role || 'analyst',
     notifications: {
@@ -100,7 +100,7 @@ export default function SettingsPage() {
 
         {/* Tabs */}
         <div className="flex gap-4 border-b border-border">
-          {['account', 'notifications', 'security', 'integrations'].map((tab) => (
+          {['account', 'notifications', 'security'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -358,74 +358,7 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* Integrations */}
-        {activeTab === 'integrations' && (
-          <Card className="bg-card border border-border p-6 space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-foreground mb-4">Connected Integrations</h2>
-            </div>
-
-            <div className="space-y-4">
-              {/* Slack */}
-              <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-                <div>
-                  <p className="font-medium text-foreground">Slack</p>
-                  <p className="text-sm text-muted-foreground">Send alerts to Slack channels</p>
-                </div>
-                <Button size="sm" className="bg-success hover:bg-success/90 text-white">
-                  <Check size={16} className="mr-1" />
-                  Connected
-                </Button>
-              </div>
-
-              {/* PagerDuty */}
-              <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-                <div>
-                  <p className="font-medium text-foreground">PagerDuty</p>
-                  <p className="text-sm text-muted-foreground">Incident response integration</p>
-                </div>
-                <Button size="sm" variant="outline" className="border-border">
-                  Connect
-                </Button>
-              </div>
-
-              {/* Splunk */}
-              <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-                <div>
-                  <p className="font-medium text-foreground">Splunk</p>
-                  <p className="text-sm text-muted-foreground">SIEM log forwarding</p>
-                </div>
-                <Button size="sm" className="bg-success hover:bg-success/90 text-white">
-                  <Check size={16} className="mr-1" />
-                  Connected
-                </Button>
-              </div>
-
-              {/* Microsoft Teams */}
-              <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-                <div>
-                  <p className="font-medium text-foreground">Microsoft Teams</p>
-                  <p className="text-sm text-muted-foreground">Team notifications</p>
-                </div>
-                <Button size="sm" variant="outline" className="border-border">
-                  Connect
-                </Button>
-              </div>
-
-              {/* AWS */}
-              <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg">
-                <div>
-                  <p className="font-medium text-foreground">Amazon Web Services</p>
-                  <p className="text-sm text-muted-foreground">Cloud security monitoring</p>
-                </div>
-                <Button size="sm" className="bg-success hover:bg-success/90 text-white">
-                  <Check size={16} className="mr-1" />
-                  Connected
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
+        {/* ...integrations removed... */}
 
         {/* Success Message */}
         {saveSuccess && (

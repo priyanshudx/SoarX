@@ -27,7 +27,7 @@ const MOCK_USERS: Record<string, { password: string; user: User }> = {
     user: {
       id: '1',
       email: 'admin@soar.com',
-      name: 'Security Admin',
+      name: 'mainak sarkar',
       role: 'admin',
       avatar: '👨‍💼'
     }
@@ -63,7 +63,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedUser = localStorage.getItem('soar-x-user');
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        // Force correct name for admin
+        if (parsedUser.email === 'admin@soar.com') {
+          parsedUser.name = 'mainak sarkar';
+        }
+        setUser(parsedUser);
       } catch {
         localStorage.removeItem('soar-x-user');
       }
@@ -83,7 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Invalid email or password');
     }
 
-    const userData = userCredentials.user;
+    // Always set correct name for admin
+    const userData = { ...userCredentials.user };
+    if (userData.email === 'admin@soar.com') {
+      userData.name = 'mainak sarkar';
+    }
     setUser(userData);
     localStorage.setItem('soar-x-user', JSON.stringify(userData));
     setIsLoading(false);

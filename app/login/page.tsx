@@ -1,4 +1,4 @@
-'use client';
+ 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -6,7 +6,7 @@ import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { AlertCircle, Loader2, Shield } from 'lucide-react';
+import { AlertCircle, Loader2, Shield, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Redirect to dashboard if already authenticated
   useEffect(() => {
@@ -76,7 +77,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@soar.com"
+                placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isSubmitting}
@@ -89,15 +90,30 @@ export default function LoginPage() {
               <label htmlFor="password" className="text-sm font-medium text-foreground">
                 Password
               </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isSubmitting}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isSubmitting}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} />
+                  ) : (
+                    <Eye size={20} />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Submit Button */}
@@ -118,20 +134,7 @@ export default function LoginPage() {
           </form>
 
           {/* Demo Credentials */}
-          <div className="space-y-2 pt-4 border-t border-border">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Demo Credentials</p>
-            <div className="space-y-2 text-xs">
-              <div className="bg-secondary/50 rounded p-2">
-                <p className="text-foreground font-mono">admin@soar.com / admin123</p>
-              </div>
-              <div className="bg-secondary/50 rounded p-2">
-                <p className="text-foreground font-mono">analyst@soar.com / analyst123</p>
-              </div>
-              <div className="bg-secondary/50 rounded p-2">
-                <p className="text-foreground font-mono">viewer@soar.com / viewer123</p>
-              </div>
-            </div>
-          </div>
+          {/* ...existing code... */}
         </Card>
 
         {/* Footer */}
