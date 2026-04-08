@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
-import { supabase, supabaseConfigError } from '@/lib/supabase';
+import { supabaseConfigError } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Bell, Lock, Save, Check, Eye, EyeOff } from 'lucide-react';
 
+
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, supabaseClient } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('account');
   const [showPassword, setShowPassword] = useState(false);
@@ -109,7 +110,7 @@ export default function SettingsPage() {
       return;
     }
 
-    if (!supabase) {
+    if (!supabaseClient) {
       setSaveError(supabaseConfigError || 'Supabase is not configured.');
       return;
     }
@@ -122,7 +123,7 @@ export default function SettingsPage() {
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.auth.updateUser({
+      const { error } = await supabaseClient.auth.updateUser({
         data: {
           name: trimmedName,
           role: user?.role || 'viewer',
@@ -159,7 +160,7 @@ export default function SettingsPage() {
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (!supabase) {
+    if (!supabaseClient) {
       setPasswordError(supabaseConfigError || 'Supabase is not configured.');
       return;
     }
@@ -181,7 +182,7 @@ export default function SettingsPage() {
 
     setIsChangingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
+      const { error } = await supabaseClient.auth.updateUser({
         password: passwordForm.newPassword,
       });
 
@@ -206,14 +207,14 @@ export default function SettingsPage() {
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (!supabase) {
+    if (!supabaseClient) {
       setPasswordError(supabaseConfigError || 'Supabase is not configured.');
       return;
     }
 
     setIsSigningOutAllSessions(true);
     try {
-      const { error } = await supabase.auth.signOut({ scope: 'global' });
+      const { error } = await supabaseClient.auth.signOut({ scope: 'global' });
       if (error) {
         throw new Error(error.message);
       }

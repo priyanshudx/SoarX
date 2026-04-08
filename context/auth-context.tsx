@@ -30,6 +30,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  supabaseClient: typeof supabase;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -276,7 +277,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         markAllNotificationsRead,
         login,
         signup,
-        logout
+        logout,
+        supabaseClient: supabase
       }}
     >
       {children}
