@@ -13,7 +13,9 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('account');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isSigningOutAllSessions, setIsSigningOutAllSessions] = useState(false);
@@ -97,9 +99,52 @@ export default function SettingsPage() {
     }));
   };
 
-  const handleSave = () => {
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+  const handleSave = async () => {
+    setSaveError('');
+    setSaveSuccess(false);
+
+    if (activeTab !== 'account') {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      return;
+    }
+
+    if (!supabase) {
+      setSaveError(supabaseConfigError || 'Supabase is not configured.');
+      return;
+    }
+
+    const trimmedName = formData.name.trim();
+    if (!trimmedName) {
+      setSaveError('Name cannot be empty.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          name: trimmedName,
+          role: user?.role || 'viewer',
+          avatar: user?.avatar || '👤',
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        name: trimmedName,
+      }));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Failed to save settings.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handlePasswordInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -272,12 +317,15 @@ export default function SettingsPage() {
               <Button variant="outline" className="border-border">Cancel</Button>
               <Button 
                 onClick={handleSave}
+                disabled={isSaving}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-2"
               >
                 <Save size={16} />
-                Save Changes
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
+
+            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
           </Card>
         )}
 
