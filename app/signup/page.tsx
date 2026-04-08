@@ -64,6 +64,7 @@ export default function SignupPage() {
       }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create account');
+    } finally {
       setIsSubmitting(false);
     }
   };
