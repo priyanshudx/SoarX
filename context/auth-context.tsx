@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export interface User {
   id: string;
@@ -15,92 +16,112 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  signup: (email: string, password: string, name: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Mock users database
-const MOCK_USERS: Record<string, { password: string; user: User }> = {
-  'admin@soar.com': {
-    password: 'admin123',
-    user: {
-      id: '1',
-      email: 'admin@soar.com',
-      name: 'mainak sarkar',
-      role: 'admin',
-      avatar: '👨‍💼'
-    }
-  },
-  'analyst@soar.com': {
-    password: 'analyst123',
-    user: {
-      id: '2',
-      email: 'analyst@soar.com',
-      name: 'Security Analyst',
-      role: 'analyst',
-      avatar: '👩‍💻'
-    }
-  },
-  'viewer@soar.com': {
-    password: 'viewer123',
-    user: {
-      id: '3',
-      email: 'viewer@soar.com',
-      name: 'Security Viewer',
-      role: 'viewer',
-      avatar: '👤'
-    }
-  }
-};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize auth state from localStorage
+  // Initialize auth state from Supabase on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('soar-x-user');
-    if (storedUser) {
+    const initializeAuth = async () => {
       try {
-        const parsedUser = JSON.parse(storedUser);
-        // Force correct name for admin
-        if (parsedUser.email === 'admin@soar.com') {
-          parsedUser.name = 'mainak sarkar';
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          const userData: User = {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            role: session.user.user_metadata?.role || 'viewer',
+            avatar: session.user.user_metadata?.avatar || '👤',
+          };
+          setUser(userData);
         }
-        setUser(parsedUser);
-      } catch {
-        localStorage.removeItem('soar-x-user');
+      } catch (error) {
+        console.error('Failed to initialize auth:', error);
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    };
+
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const userData: User = {
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+          role: session.user.user_metadata?.role || 'viewer',
+          avatar: session.user.user_metadata?.avatar || '👤',
+        };
+        setUser(userData);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
-    // Simulate network delay - reduced to 400ms for faster feedback
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const userCredentials = MOCK_USERS[email];
-
-    if (!userCredentials || userCredentials.password !== password) {
+      if (error) {
+        throw new Error(error.message);
+      }
+    } finally {
       setIsLoading(false);
-      throw new Error('Invalid email or password');
     }
-
-    // Always set correct name for admin
-    const userData = { ...userCredentials.user };
-    if (userData.email === 'admin@soar.com') {
-      userData.name = 'mainak sarkar';
-    }
-    setUser(userData);
-    localStorage.setItem('soar-x-user', JSON.stringify(userData));
-    setIsLoading(false);
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('soar-x-user');
+  const signup = async (email: string, password: string, name: string) => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            role: 'viewer',
+            avatar: '👤',
+          },
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw error;
+    }
   };
 
   return (

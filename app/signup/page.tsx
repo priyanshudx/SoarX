@@ -11,7 +11,7 @@ import { AlertCircle, Loader2, Shield, Eye, EyeOff, CheckCircle2 } from 'lucide-
 
 export default function SignupPage() {
   const router = useRouter();
-  const { isLoading, isAuthenticated } = useAuth();
+  const { signup, isLoading, isAuthenticated } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,11 +52,20 @@ export default function SignupPage() {
       return;
     }
 
-    // Placeholder submit flow until Supabase auth is connected.
-    await new Promise((resolve) => setTimeout(resolve, 700));
-
-    setSuccess('Account created successfully. Continue to login.');
-    setIsSubmitting(false);
+    try {
+      await signup(email, password, name);
+      setSuccess('Account created successfully! Check your email to confirm your account.');
+      setName('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
+      setIsSubmitting(false);
+    }
   };
 
   return (
