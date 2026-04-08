@@ -14,9 +14,9 @@ export default function SettingsPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [formData, setFormData] = useState({
-    name: 'Mainak sarkar',
+    name: user?.name || '',
     email: user?.email || '',
-    role: user?.role || 'analyst',
+    role: user?.role || 'viewer',
     notifications: {
       emailAlerts: true,
       slackNotifications: true,
@@ -35,6 +35,19 @@ export default function SettingsPage() {
     // Load immediately without artificial delay
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      name: user.name || '',
+      email: user.email || '',
+      role: user.role || 'viewer',
+    }));
+  }, [user]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
