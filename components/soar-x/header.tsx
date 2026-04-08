@@ -15,7 +15,7 @@ import {
 
 export function Header() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, notifications, unreadNotificationCount, markAllNotificationsRead } = useAuth();
 
   const handleLogout = () => {
     logout();
@@ -37,10 +37,52 @@ export function Header() {
       {/* Right Side */}
       <div className="flex items-center gap-4 ml-auto">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell size={20} />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full"></span>
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell size={20} />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-destructive text-white rounded-full text-[10px] leading-5 text-center">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80 bg-card border-border">
+            <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-foreground">Notifications</p>
+              {notifications.length > 0 && unreadNotificationCount > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllNotificationsRead}
+                  className="text-xs text-primary hover:text-primary/80 transition-colors"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="px-3 py-6 text-sm text-muted-foreground text-center">
+                  No notifications yet
+                </div>
+              ) : (
+                notifications.slice(0, 10).map((item) => (
+                  <div
+                    key={item.id}
+                    className={`px-3 py-2 border-b border-border/60 last:border-b-0 ${
+                      item.read ? 'bg-card' : 'bg-primary/5'
+                    }`}
+                  >
+                    <p className="text-sm font-medium text-foreground">{item.title}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{new Date(item.timestamp).toLocaleString()}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* User Menu */}
         <DropdownMenu>

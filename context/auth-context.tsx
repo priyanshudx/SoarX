@@ -12,10 +12,21 @@ export interface User {
   avatar?: string;
 }
 
+export interface LoginNotification {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  read: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  notifications: LoginNotification[];
+  unreadNotificationCount: number;
+  markAllNotificationsRead: () => void;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -24,9 +35,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const LOGIN_EVENT_KEY = 'soar-x-login-event';
 
+const getNotificationsStorageKey = (userId: string) => `soar-x-notifications-${userId}`;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [notifications, setNotifications] = useState<LoginNotification[]>([]);
   const tabSessionIdRef = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const ensureSupabaseClient = () => {
@@ -121,9 +135,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        toast({
+        const newNotification: LoginNotification = {
+          id: `${payload.timestamp}-${payload.sessionId}`,
           title: 'New Login Detected',
-          description: `A new login was detected for ${payload.email} at ${new Date(payload.timestamp).toLocaleString()}.`,
+          description: `A new login was detected for ${payload.email}.`,
+          timestamp: payload.timestamp,
+          read: false,
+        };
+
+        setNotifications((prev) => {
+          const next = [newNotification, ...prev].slice(0, 20);
+          localStorage.setItem(getNotificationsStorageKey(user.id), JSON.stringify(next));
+          return next;
+        });
+
+        toast({
+          title: newNotification.title,
+          description: `${newNotification.description} ${new Date(payload.timestamp).toLocaleString()}`,
         });
       } catch {
         // Ignore malformed payloads from storage.
@@ -135,6 +163,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('storage', handleStorage);
     };
   }, [user]);
+
+  // Load saved notifications for the currently authenticated user.
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(getNotificationsStorageKey(user.id));
+      if (!stored) {
+        setNotifications([]);
+        return;
+      }
+      const parsed = JSON.parse(stored) as LoginNotification[];
+      setNotifications(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setNotifications([]);
+    }
+  }, [user]);
+
+  const markAllNotificationsRead = () => {
+    if (!user || typeof window === 'undefined') {
+      return;
+    }
+
+    setNotifications((prev) => {
+      const next = prev.map((item) => ({ ...item, read: true }));
+      localStorage.setItem(getNotificationsStorageKey(user.id), JSON.stringify(next));
+      return next;
+    });
+  };
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
@@ -193,10 +253,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!supabase) {
         setUser(null);
+        setNotifications([]);
         return;
       }
       await supabase.auth.signOut();
       setUser(null);
+      setNotifications([]);
     } catch (error) {
       console.error('Logout error:', error);
       throw error;
@@ -209,6 +271,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isAuthenticated: user !== null,
         isLoading,
+        notifications,
+        unreadNotificationCount: notifications.filter((item) => !item.read).length,
+        markAllNotificationsRead,
         login,
         signup,
         logout
