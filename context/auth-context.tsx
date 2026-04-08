@@ -1,7 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, supabaseConfigError } from '@/lib/supabase';
+import { toast } from '@/hooks/use-toast';
 
 export interface User {
   id: string;
@@ -21,10 +22,12 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const LOGIN_EVENT_KEY = 'soar-x-login-event';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const tabSessionIdRef = useRef(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const ensureSupabaseClient = () => {
     if (!supabase) {
@@ -91,17 +94,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Listen for login events from other tabs and notify currently logged-in user.
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') {
+      return;
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== LOGIN_EVENT_KEY || !event.newValue) {
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(event.newValue) as {
+          userId: string;
+          email: string;
+          timestamp: string;
+          sessionId: string;
+        };
+
+        if (payload.userId !== user.id) {
+          return;
+        }
+
+        if (payload.sessionId === tabSessionIdRef.current) {
+          return;
+        }
+
+        toast({
+          title: 'New Login Detected',
+          description: `A new login was detected for ${payload.email} at ${new Date(payload.timestamp).toLocaleString()}.`,
+        });
+      } catch {
+        // Ignore malformed payloads from storage.
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [user]);
+
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
       const client = ensureSupabaseClient();
-      const { error } = await client.auth.signInWithPassword({
+      const { data, error } = await client.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
         throw new Error(error.message);
+      }
+
+      if (typeof window !== 'undefined' && data.user) {
+        localStorage.setItem(
+          LOGIN_EVENT_KEY,
+          JSON.stringify({
+            userId: data.user.id,
+            email: data.user.email || email,
+            timestamp: new Date().toISOString(),
+            sessionId: tabSessionIdRef.current,
+          })
+        );
       }
     } finally {
       setIsLoading(false);
