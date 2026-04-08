@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
+import { supabase, supabaseConfigError } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bell, Lock, Save, Check } from 'lucide-react';
+import { Bell, Lock, Save, Check, Eye, EyeOff } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -13,6 +14,15 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('account');
   const [showPassword, setShowPassword] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isSigningOutAllSessions, setIsSigningOutAllSessions] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordForm, setPasswordForm] = useState({
+    newPassword: '',
+    confirmPassword: '',
+  });
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -90,6 +100,85 @@ export default function SettingsPage() {
   const handleSave = () => {
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handlePasswordInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPasswordForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!supabase) {
+      setPasswordError(supabaseConfigError || 'Supabase is not configured.');
+      return;
+    }
+
+    if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordError('Please enter and confirm your new password.');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters long.');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: passwordForm.newPassword,
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setPasswordSuccess('Password updated successfully.');
+      setPasswordForm({
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setShowPasswordForm(false);
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'Failed to update password.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleSignOutAllSessions = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!supabase) {
+      setPasswordError(supabaseConfigError || 'Supabase is not configured.');
+      return;
+    }
+
+    setIsSigningOutAllSessions(true);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'global' });
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setPasswordSuccess('Signed out from all sessions successfully.');
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'Failed to sign out all sessions.');
+    } finally {
+      setIsSigningOutAllSessions(false);
+    }
   };
 
   if (loading) {
@@ -349,11 +438,81 @@ export default function SettingsPage() {
             {/* Danger Zone */}
             <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg space-y-3">
               <h3 className="font-semibold text-destructive">Danger Zone</h3>
-              <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/10">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPasswordForm((prev) => !prev);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                }}
+                className="w-full border-destructive text-destructive hover:bg-destructive/10"
+              >
                 Change Password
               </Button>
-              <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/10">
-                Sign Out All Sessions
+              {showPasswordForm && (
+                <div className="space-y-3 p-4 bg-background/70 border border-border rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">New Password</label>
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        name="newPassword"
+                        value={passwordForm.newPassword}
+                        onChange={handlePasswordInputChange}
+                        className="bg-secondary border-border text-foreground pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+                        aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">Confirm New Password</label>
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        name="confirmPassword"
+                        value={passwordForm.confirmPassword}
+                        onChange={handlePasswordInputChange}
+                        className="bg-secondary border-border text-foreground pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+                        aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div />
+                    <Button
+                      type="button"
+                      onClick={handleChangePassword}
+                      disabled={isChangingPassword}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                    >
+                      {isChangingPassword ? 'Updating...' : 'Update Password'}
+                    </Button>
+                  </div>
+                  {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+                  {passwordSuccess && <p className="text-sm text-primary">{passwordSuccess}</p>}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                onClick={handleSignOutAllSessions}
+                disabled={isSigningOutAllSessions}
+                className="w-full border-destructive text-destructive hover:bg-destructive/10"
+              >
+                {isSigningOutAllSessions ? 'Signing out...' : 'Sign Out All Sessions'}
               </Button>
             </div>
 
