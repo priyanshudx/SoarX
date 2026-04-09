@@ -29,7 +29,6 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    role: user?.role || 'viewer',
     notifications: {
       emailAlerts: true,
       slackNotifications: true,
@@ -58,7 +57,6 @@ export default function SettingsPage() {
       ...prev,
       name: user.name || '',
       email: user.email || '',
-      role: user.role || 'viewer',
     }));
   }, [user]);
 
@@ -126,7 +124,6 @@ export default function SettingsPage() {
       const { error } = await supabaseClient.auth.updateUser({
         data: {
           name: trimmedName,
-          role: user?.role || 'viewer',
           avatar: user?.avatar || '👤',
         },
       });
@@ -289,19 +286,6 @@ export default function SettingsPage() {
                   disabled
                   className="bg-secondary border-border text-muted-foreground"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Role</label>
-                <select
-                  name="role"
-                  value={formData.role}
-                  disabled
-                  className="w-full px-3 py-2 bg-secondary border border-border rounded-md text-muted-foreground text-sm"
-                >
-                  <option value="admin">Administrator</option>
-                  <option value="analyst">Security Analyst</option>
-                  <option value="viewer">Viewer</option>
-                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Organization</label>
