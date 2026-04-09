@@ -11,7 +11,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'SOAR X - Security Operations Center',
   description: 'Enterprise-grade Explainable AI-driven Security Operations Center platform',
-  generator: 'v0.app',
+  generator: 'SOAR X',
   icons: {
     icon: [
       {

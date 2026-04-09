@@ -360,7 +360,11 @@ export default function AlertsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-3">
-                        <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10">
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="text-primary hover:bg-primary/10"
+                        >
                           View
                         </Button>
                       </td>

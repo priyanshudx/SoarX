@@ -96,7 +96,7 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-56 bg-card border-border">
             <div className="px-4 py-3 border-b border-border">
               <p className="text-sm font-semibold text-foreground">{user?.name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
             <DropdownMenuItem className="cursor-pointer text-foreground focus:bg-secondary">
               <User size={16} className="mr-2" />

@@ -8,7 +8,6 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'analyst' | 'viewer';
   avatar?: string;
 }
 
@@ -69,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: session.user.id,
             email: session.user.email || '',
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            role: session.user.user_metadata?.role || 'viewer',
             avatar: session.user.user_metadata?.avatar || '👤',
           };
           setUser(userData);
@@ -95,7 +93,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: session.user.id,
           email: session.user.email || '',
           name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-          role: session.user.user_metadata?.role || 'viewer',
           avatar: session.user.user_metadata?.avatar || '👤',
         };
         setUser(userData);
@@ -236,7 +233,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             name,
-            role: 'viewer',
             avatar: '👤',
           },
         },
