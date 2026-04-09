@@ -1,26 +1,17 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    @media (prefers-color-scheme: light) {
-      .background { fill: black; }
-      .foreground { fill: white; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .background { fill: white; }
-      .foreground { fill: black; }
-    }
-  </style>
-  <g clip-path="url(#clip0_7960_43945)">
-    <rect class="background" width="180" height="180" rx="37" />
-    <g style="transform: scale(95%); transform-origin: center">
-      <path class="foreground"
-        d="M101.141 53H136.632C151.023 53 162.689 64.6662 162.689 79.0573V112.904H148.112V79.0573C148.112 78.7105 148.098 78.3662 148.072 78.0251L112.581 112.898C112.701 112.902 112.821 112.904 112.941 112.904H148.112V126.672H112.941C98.5504 126.672 86.5638 114.891 86.5638 100.5V66.7434H101.141V100.5C101.141 101.15 101.191 101.792 101.289 102.422L137.56 66.7816C137.255 66.7563 136.945 66.7434 136.632 66.7434H101.141V53Z" />
-      <path class="foreground"
-        d="M65.2926 124.136L14 66.7372H34.6355L64.7495 100.436V66.7372H80.1365V118.47C80.1365 126.278 70.4953 129.958 65.2926 124.136Z" />
-    </g>
-  </g>
   <defs>
-    <clipPath id="clip0_7960_43945">
-      <rect width="180" height="180" fill="white" />
-    </clipPath>
+    <linearGradient id="shield" x1="42" y1="28" x2="138" y2="152" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="58" y1="42" x2="118" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BAE6FD" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#E0F2FE" stop-opacity="0.65"/>
+    </linearGradient>
   </defs>
+  <rect width="180" height="180" rx="36" fill="#0A0E27"/>
+  <path d="M90 28L132 44V82C132 109.5 115.5 127.5 90 150C64.5 127.5 48 109.5 48 82V44L90 28Z" fill="url(#shield)"/>
+  <path d="M90 44L111 53V79.5C111 95.5 101.8 106.8 90 116.7C78.2 106.8 69 95.5 69 79.5V53L90 44Z" fill="url(#shine)"/>
+  <path d="M64 62L116 118" stroke="#E0F2FE" stroke-width="14" stroke-linecap="round"/>
+  <path d="M116 62L64 118" stroke="#E0F2FE" stroke-width="14" stroke-linecap="round"/>
 </svg>
