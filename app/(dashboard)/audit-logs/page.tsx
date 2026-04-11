@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Search, Download, ChevronUp, ChevronDown, Eye, Copy } from 'lucide-react';
 import { useAuditLogs } from '@/hooks/use-audit-logs';
 import type { AuditLogEntry } from '@/lib/audit-logs-service';
+import { useAuth } from '@/context/auth-context';
 
 type SortField = 'timestamp' | 'user' | 'action' | 'status';
 type SortOrder = 'asc' | 'desc';
 
 export default function AuditLogsPage() {
-  const { logs, isLoading: loading, error } = useAuditLogs(300);
+  const { user } = useAuth();
+  const { logs, isLoading: loading, error } = useAuditLogs(300, user?.email);
   const [searchTerm, setSearchTerm] = useState('');
   const [resourceTypeFilter, setResourceTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');

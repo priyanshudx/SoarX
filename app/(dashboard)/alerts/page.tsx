@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { AlertTriangle, Search, Download, Filter, ChevronUp, ChevronDown, Server } from 'lucide-react';
 import { useAlerts } from '@/hooks/use-alerts';
+import { useAuth } from '@/context/auth-context';
 import type { SecurityAlert } from '@/lib/alerts-service';
 
 type SortField = 'timestamp' | 'riskScore' | 'severity';
@@ -221,7 +222,8 @@ function shortAlertDescription(description: string, maxLength = 96): string {
 }
 
 export default function AlertsPage() {
-  const { alerts, isLoading: loading, error } = useAlerts(200);
+  const { user } = useAuth();
+  const { alerts, isLoading: loading, error } = useAlerts(200, user?.email);
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');

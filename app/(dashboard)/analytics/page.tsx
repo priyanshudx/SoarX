@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, BarChart3, PieChart as PieChartIcon } from 'lucide-react';
 import { useAlerts } from '@/hooks/use-alerts';
+import { useAuth } from '@/context/auth-context';
 
 const detectionMethodsData = [
   { method: 'IDS/IPS', detections: 245, prevention: 92 },
@@ -83,7 +84,8 @@ function buildSeverityDistributionData(alerts: Array<{ severity: string; riskSco
 }
 
 export default function AnalyticsPage() {
-  const { alerts, isLoading: loading } = useAlerts(200);
+  const { user } = useAuth();
+  const { alerts, isLoading: loading } = useAlerts(200, user?.email);
 
   const alertTrendsData = buildAlertTrendData(alerts);
   const threatDistributionData = buildThreatDistributionData(alerts);

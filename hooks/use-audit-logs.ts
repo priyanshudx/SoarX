@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchAuditLogs, type AuditLogEntry } from '@/lib/audit-logs-service';
 
-export function useAuditLogs(limit = 200) {
+export function useAuditLogs(limit = 200, userEmail?: string) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,7 +13,7 @@ export function useAuditLogs(limit = 200) {
     setError('');
 
     try {
-      const data = await fetchAuditLogs(limit);
+      const data = await fetchAuditLogs(limit, userEmail);
       setLogs(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load audit logs.');
@@ -21,7 +21,7 @@ export function useAuditLogs(limit = 200) {
     } finally {
       setIsLoading(false);
     }
-  }, [limit]);
+  }, [limit, userEmail]);
 
   useEffect(() => {
     refresh();

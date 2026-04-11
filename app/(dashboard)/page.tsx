@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { checkBackendHealth, predictAndStoreThreat, predictThreatWithRetry } from '@/lib/soarx-api';
 import { buildPredictRequestFromAlerts } from '@/lib/security-feature-engineering';
 import { useAlerts } from '@/hooks/use-alerts';
+import { useAuth } from '@/context/auth-context';
 
 function extractMetricFromDescription(description: string, key: string): number | null {
   const match = description.match(new RegExp(`${key}=([0-9]+(?:\\.[0-9]+)?)`, 'i'));
@@ -24,13 +25,14 @@ function extractMetricFromDescription(description: string, key: string): number 
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
   const [modelConfidence, setModelConfidence] = useState('94.2%');
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [apiError, setApiError] = useState('');
   const [predictionLoading, setPredictionLoading] = useState(true);
   const [storeLoading, setStoreLoading] = useState(false);
-  const { alerts, isLoading: alertsLoading, error: alertsError, refresh: refreshAlerts } = useAlerts(200);
+  const { alerts, isLoading: alertsLoading, error: alertsError, refresh: refreshAlerts } = useAlerts(200, user?.email);
 
   const totalAlerts = alerts.length;
   const highRiskAlerts = alerts.filter((alert) => alert.riskScore >= 80).length;
@@ -104,7 +106,7 @@ export default function Dashboard() {
       const payload = buildPredictRequestFromAlerts(alerts);
       const result = await predictAndStoreThreat({
         data: payload.data,
-        source: 'dashboard-ui',
+        source: user?.email || 'dashboard-ui',
       });
 
       const confidencePercent = Math.max(0, Math.min(100, Math.round(result.confidence * 100)));
@@ -117,7 +119,7 @@ export default function Dashboard() {
     } finally {
       setStoreLoading(false);
     }
-  }, [alerts, refreshAlerts]);
+  }, [alerts, refreshAlerts, user?.email]);
 
   // Load prediction from backend and handle hydration.
   useEffect(() => {
