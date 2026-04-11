@@ -57,14 +57,19 @@ function mapAlertRow(row: AlertRow, index: number): SecurityAlert {
   };
 }
 
-export async function fetchSecurityAlerts(limit = 100): Promise<SecurityAlert[]> {
+export async function fetchSecurityAlerts(limit = 100, userEmail?: string): Promise<SecurityAlert[]> {
   if (!supabase) {
     throw new Error(supabaseConfigError || 'Supabase is not configured.');
+  }
+
+  if (!userEmail) {
+    return [];
   }
 
   const { data, error } = await supabase
     .from('alerts')
     .select('id,title,description,severity,risk_score,timestamp,source,target_ip,status')
+    .eq('source', userEmail)
     .order('timestamp', { ascending: false })
     .limit(limit);
 

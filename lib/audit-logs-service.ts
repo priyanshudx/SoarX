@@ -61,14 +61,19 @@ function mapAuditLogRow(row: AuditLogRow, index: number): AuditLogEntry {
   };
 }
 
-export async function fetchAuditLogs(limit = 200): Promise<AuditLogEntry[]> {
+export async function fetchAuditLogs(limit = 200, userEmail?: string): Promise<AuditLogEntry[]> {
   if (!supabase) {
     throw new Error(supabaseConfigError || 'Supabase is not configured.');
+  }
+
+  if (!userEmail) {
+    return [];
   }
 
   const { data, error } = await supabase
     .from('audit_logs')
     .select('id,timestamp,user_email,action,resource,resource_type,status,ip_address,details')
+    .eq('user_email', userEmail)
     .order('timestamp', { ascending: false })
     .limit(limit);
 

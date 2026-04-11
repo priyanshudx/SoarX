@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchSecurityAlerts, type SecurityAlert } from '@/lib/alerts-service';
 
-export function useAlerts(limit = 100) {
+export function useAlerts(limit = 100, userEmail?: string) {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,7 +13,7 @@ export function useAlerts(limit = 100) {
     setError('');
 
     try {
-      const data = await fetchSecurityAlerts(limit);
+      const data = await fetchSecurityAlerts(limit, userEmail);
       setAlerts(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load alerts.');
@@ -21,7 +21,7 @@ export function useAlerts(limit = 100) {
     } finally {
       setIsLoading(false);
     }
-  }, [limit]);
+  }, [limit, userEmail]);
 
   useEffect(() => {
     refresh();
