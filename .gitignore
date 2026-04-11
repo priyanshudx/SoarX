@@ -8,17 +8,3 @@ node_modules/
 .next/
 .env*.local
 .DS_Store
-
-# Local editor settings
-.vscode/
-
-# TypeScript incremental build output
-tsconfig.tsbuildinfo
-
-# Python artifacts and virtual environments
-__pycache__/
-*.py[cod]
-.venv/
-
-# Backend secrets
-backend/.env
