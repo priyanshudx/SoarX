@@ -1,122 +1,234 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Search, Download, Filter, ChevronUp, ChevronDown } from 'lucide-react';
-
-interface Alert {
-  id: string;
-  timestamp: string;
-  threat: string;
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  riskScore: number;
-  source: string;
-  description: string;
-  status: 'open' | 'investigating' | 'resolved';
-}
-
-const MOCK_ALERTS: Alert[] = [
-  {
-    id: 'ALT-001',
-    timestamp: '2024-02-22 14:32:45',
-    threat: 'Suspicious Login Attempt',
-    severity: 'critical',
-    riskScore: 95,
-    source: '192.168.1.102',
-    description: 'Multiple failed login attempts followed by successful access from unusual location',
-    status: 'investigating'
-  },
-  {
-    id: 'ALT-002',
-    timestamp: '2024-02-22 13:18:22',
-    threat: 'Malware Detection',
-    severity: 'high',
-    riskScore: 87,
-    source: 'endpoint-srv-04',
-    description: 'Trojan.GenericKD detected in system memory',
-    status: 'open'
-  },
-  {
-    id: 'ALT-003',
-    timestamp: '2024-02-22 11:45:12',
-    threat: 'Data Exfiltration',
-    severity: 'high',
-    riskScore: 82,
-    source: 'user-terminal-07',
-    description: 'Large data transfer to external IP detected',
-    status: 'investigating'
-  },
-  {
-    id: 'ALT-004',
-    timestamp: '2024-02-22 10:22:33',
-    threat: 'SQL Injection Attempt',
-    severity: 'medium',
-    riskScore: 65,
-    source: 'web-app-01',
-    description: 'SQL injection pattern detected in web application logs',
-    status: 'open'
-  },
-  {
-    id: 'ALT-005',
-    timestamp: '2024-02-22 09:15:44',
-    threat: 'Privilege Escalation',
-    severity: 'high',
-    riskScore: 79,
-    source: 'admin-workstation',
-    description: 'Unauthorized privilege escalation attempt detected',
-    status: 'resolved'
-  },
-  {
-    id: 'ALT-006',
-    timestamp: '2024-02-22 08:30:21',
-    threat: 'DDoS Attack',
-    severity: 'critical',
-    riskScore: 92,
-    source: '10.0.0.0/8',
-    description: 'Large-scale distributed denial of service attack in progress',
-    status: 'investigating'
-  },
-  {
-    id: 'ALT-007',
-    timestamp: '2024-02-22 07:45:18',
-    threat: 'Phishing Email',
-    severity: 'medium',
-    riskScore: 58,
-    source: 'mail-gateway',
-    description: 'Email with malicious attachment targeting executives',
-    status: 'open'
-  },
-  {
-    id: 'ALT-008',
-    timestamp: '2024-02-22 06:20:09',
-    threat: 'Ransomware Activity',
-    severity: 'critical',
-    riskScore: 98,
-    source: 'file-server-02',
-    description: 'Ransomware encryption activity detected on network shares',
-    status: 'open'
-  }
-];
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { AlertTriangle, Search, Download, Filter, ChevronUp, ChevronDown, Server } from 'lucide-react';
+import { useAlerts } from '@/hooks/use-alerts';
+import type { SecurityAlert } from '@/lib/alerts-service';
 
 type SortField = 'timestamp' | 'riskScore' | 'severity';
 type SortOrder = 'asc' | 'desc';
 
+type ExplainabilityMeta = {
+  schema?: string;
+  request?: string | null;
+  status_code?: number | null;
+  source?: string;
+  target_ip?: string | null;
+  prediction_label?: string | null;
+  confidence?: number | null;
+  model_risk?: number | null;
+  heuristic_risk?: number | null;
+  final_risk?: number | null;
+  indicators?: string[];
+  severity?: string;
+  status?: string;
+  timestamp?: string;
+  raw?: string;
+};
+
+type AlertInsight = {
+  request: string | null;
+  predictionLabel: string | null;
+  confidencePct: number | null;
+  modelRisk: number | null;
+  heuristicRisk: number | null;
+  finalRisk: number;
+  indicators: string[];
+  raw: string | null;
+  hasStructuredMetadata: boolean;
+};
+
+function extractJsonObjectAfterPrefix(content: string, prefix: string): string | null {
+  const prefixIndex = content.indexOf(prefix);
+  if (prefixIndex === -1) return null;
+
+  const jsonStart = content.indexOf('{', prefixIndex + prefix.length);
+  if (jsonStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = jsonStart; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(jsonStart, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseMetaJson(description: string): ExplainabilityMeta | null {
+  const jsonRaw = extractJsonObjectAfterPrefix(description, 'meta_json=');
+  if (!jsonRaw) return null;
+
+  try {
+    const parsed = JSON.parse(jsonRaw) as ExplainabilityMeta;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractLegacyPart(description: string, key: string): string {
+  const match = description.match(new RegExp(`${key}=([^|]+)`, 'i'));
+  return match ? match[1].trim() : '';
+}
+
+function parseLegacyIndicators(description: string): string[] {
+  const value = extractLegacyPart(description, 'indicators').toLowerCase();
+  if (!value || value === 'none') return [];
+
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseNumber(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeConfidence(value: number | null): number | null {
+  if (value === null) return null;
+  return value <= 1 ? value * 100 : Math.min(value, 100);
+}
+
+function toFriendlyIndicatorName(indicator: string): string {
+  return indicator
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildAlertInsight(alert: SecurityAlert): AlertInsight {
+  const meta = parseMetaJson(alert.description);
+
+  const confidence = typeof meta?.confidence === 'number'
+    ? normalizeConfidence(meta.confidence)
+    : normalizeConfidence(parseNumber(extractLegacyPart(alert.description, 'confidence')));
+
+  const modelRisk = typeof meta?.model_risk === 'number'
+    ? meta.model_risk
+    : parseNumber(extractLegacyPart(alert.description, 'model_risk'));
+
+  const heuristicRisk = typeof meta?.heuristic_risk === 'number'
+    ? meta.heuristic_risk
+    : parseNumber(extractLegacyPart(alert.description, 'heuristic_risk'));
+
+  const finalRisk = typeof meta?.final_risk === 'number'
+    ? meta.final_risk
+    : parseNumber(extractLegacyPart(alert.description, 'final_risk')) ?? alert.riskScore;
+
+  const indicators = Array.isArray(meta?.indicators)
+    ? meta.indicators.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : parseLegacyIndicators(alert.description);
+
+  return {
+    request: meta?.request || extractLegacyPart(alert.description, 'request') || null,
+    predictionLabel: meta?.prediction_label || extractLegacyPart(alert.description, 'AI') || null,
+    confidencePct: confidence,
+    modelRisk,
+    heuristicRisk,
+    finalRisk,
+    indicators,
+    raw: meta?.raw || extractLegacyPart(alert.description, 'raw') || null,
+    hasStructuredMetadata: Boolean(meta?.schema),
+  };
+}
+
+function buildAiExplanation(alert: SecurityAlert, insight: AlertInsight): string {
+  const parts: string[] = [];
+
+  parts.push(`Event ${alert.title} from ${alert.source} was scored at risk ${insight.finalRisk.toFixed(2)}.`);
+
+  if (insight.predictionLabel) {
+    parts.push(`AI label: ${insight.predictionLabel}.`);
+  }
+
+  if (insight.confidencePct !== null) {
+    parts.push(`Model confidence: ${insight.confidencePct.toFixed(2)}%.`);
+  }
+
+  if (insight.modelRisk !== null && insight.heuristicRisk !== null) {
+    parts.push(
+      `Risk composition used model score ${insight.modelRisk.toFixed(2)} and heuristic score ${insight.heuristicRisk.toFixed(2)}.`
+    );
+  }
+
+  if (insight.indicators.length > 0) {
+    parts.push(`Detected indicators: ${insight.indicators.map(toFriendlyIndicatorName).join(', ')}.`);
+  } else {
+    parts.push('No explicit attack indicators were extracted for this event.');
+  }
+
+  if (insight.request) {
+    parts.push(`Observed request: ${insight.request}.`);
+  }
+
+  return parts.join(' ');
+}
+
+function shortAlertTitle(title: string, maxLength = 36): string {
+  if (title.length <= maxLength) {
+    return title;
+  }
+
+  return `${title.slice(0, maxLength - 3)}...`;
+}
+
+function shortAlertDescription(description: string, maxLength = 96): string {
+  const compact = description
+    .replace(/meta_json=\{.*?\}\s*\|?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+
+  return `${compact.slice(0, maxLength - 3)}...`;
+}
+
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { alerts, isLoading: loading, error } = useAlerts(200);
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-
-  useEffect(() => {
-    // Load data immediately without artificial delay
-    setAlerts(MOCK_ALERTS);
-    setLoading(false);
-  }, []);
+  const [selectedAlert, setSelectedAlert] = useState<SecurityAlert | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -147,8 +259,8 @@ export default function AlertsPage() {
   };
 
   const filtered = useMemo(() => {
-    let result = alerts.filter((alert) => {
-      const matchesSearch = alert.threat.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const result = alerts.filter((alert) => {
+      const matchesSearch = alert.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            alert.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            alert.source.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesSeverity = severityFilter === 'all' || alert.severity === severityFilter;
@@ -179,6 +291,8 @@ export default function AlertsPage() {
     }
   };
 
+  const selectedInsight = selectedAlert ? buildAlertInsight(selectedAlert) : null;
+
   return (
     <main className="pt-20 lg:ml-64 pb-8">
       <div className="p-6 lg:p-8 space-y-8">
@@ -186,6 +300,7 @@ export default function AlertsPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Security Alerts</h1>
           <p className="text-muted-foreground">Real-time threat detection and alert management</p>
+          {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         </div>
 
         {/* Summary Cards */}
@@ -205,7 +320,7 @@ export default function AlertsPage() {
           <Card className="bg-card border border-border p-4">
             <p className="text-sm text-muted-foreground mb-1">Avg Risk Score</p>
             <p className="text-2xl font-bold text-primary">
-              {Math.round(alerts.reduce((sum, a) => sum + a.riskScore, 0) / alerts.length)}
+              {alerts.length ? Math.round(alerts.reduce((sum, a) => sum + a.riskScore, 0) / alerts.length) : 0}
             </p>
           </Card>
         </div>
@@ -280,10 +395,10 @@ export default function AlertsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead>
                   <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Threat</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground w-[34%]">Threat</th>
                     <th
                       className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50"
                       onClick={() => toggleSort('timestamp')}
@@ -328,9 +443,9 @@ export default function AlertsPage() {
                       <td className="px-6 py-3">
                         <div className="flex items-start gap-3">
                           <AlertTriangle size={18} className="text-warning mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="font-medium text-foreground">{alert.threat}</p>
-                            <p className="text-xs text-muted-foreground">{alert.description}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground truncate" title={alert.title}>{shortAlertTitle(alert.title)}</p>
+                            <p className="text-xs text-muted-foreground truncate" title={alert.description}>{shortAlertDescription(alert.description)}</p>
                           </div>
                         </div>
                       </td>
@@ -364,6 +479,10 @@ export default function AlertsPage() {
                           size="sm" 
                           variant="ghost" 
                           className="text-primary hover:bg-primary/10"
+                          onClick={() => {
+                            setSelectedAlert(alert);
+                            setIsDetailsOpen(true);
+                          }}
                         >
                           View
                         </Button>
@@ -375,6 +494,119 @@ export default function AlertsPage() {
             </div>
           )}
         </Card>
+
+        <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+          <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
+            <DialogHeader>
+              <DialogTitle>Alert Event Details</DialogTitle>
+              <DialogDescription>
+                Full event context with AI explanation and scoring breakdown
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedAlert && selectedInsight && (
+              <div className="space-y-5 min-w-0">
+                <div className="rounded-lg border border-border bg-secondary/20 p-4">
+                  <h4 className="text-sm font-semibold text-foreground mb-2">AI Explanation</h4>
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {buildAiExplanation(selectedAlert, selectedInsight)}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Alert Name</p>
+                    <p className="text-sm font-medium text-foreground break-words">{selectedAlert.title}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Source</p>
+                    <p className="text-sm font-medium text-foreground break-words">{selectedAlert.source}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Target IP</p>
+                    <p className="text-sm font-mono text-foreground break-all">{selectedAlert.targetIP}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Timestamp</p>
+                    <p className="text-sm text-foreground break-words">{selectedAlert.timestamp}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Severity / Status</p>
+                    <p className="text-sm text-foreground">{selectedAlert.severity} / {selectedAlert.status}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Final Risk Score</p>
+                    <p className="text-sm font-semibold text-foreground">{selectedInsight.finalRisk.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Prediction Label</p>
+                    <p className="text-sm text-foreground">{selectedInsight.predictionLabel || 'N/A'}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Model Confidence</p>
+                    <p className="text-sm text-foreground">
+                      {selectedInsight.confidencePct === null ? 'N/A' : `${selectedInsight.confidencePct.toFixed(2)}%`}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Metadata Type</p>
+                    <p className="text-sm text-foreground">
+                      {selectedInsight.hasStructuredMetadata ? 'Structured (meta_json)' : 'Legacy parsed'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Model Risk</p>
+                    <p className="text-sm text-foreground">
+                      {selectedInsight.modelRisk === null ? 'N/A' : selectedInsight.modelRisk.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 min-w-0">
+                    <p className="text-xs text-muted-foreground">Heuristic Risk</p>
+                    <p className="text-sm text-foreground">
+                      {selectedInsight.heuristicRisk === null ? 'N/A' : selectedInsight.heuristicRisk.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Detected Indicators</p>
+                  {selectedInsight.indicators.length === 0 ? (
+                    <p className="text-sm text-foreground">None</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedInsight.indicators.map((indicator) => (
+                        <span key={indicator} className="rounded-full border border-cyan-800 bg-cyan-900/20 px-2 py-0.5 text-xs text-cyan-300">
+                          {toFriendlyIndicatorName(indicator)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border p-3 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-2">Request</p>
+                  <p className="text-sm text-foreground break-all">{selectedInsight.request || 'N/A'}</p>
+                </div>
+
+                <div className="rounded-lg border border-border p-3 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-2">Raw Event</p>
+                  <pre className="whitespace-pre-wrap break-all text-xs text-foreground/90 overflow-x-hidden">{selectedInsight.raw || 'N/A'}</pre>
+                </div>
+
+                <div className="rounded-lg border border-border p-3 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-2">Full Stored Description</p>
+                  <pre className="whitespace-pre-wrap break-all text-xs text-foreground/80 overflow-x-hidden">{selectedAlert.description}</pre>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </main>
   );

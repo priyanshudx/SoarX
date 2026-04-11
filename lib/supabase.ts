@@ -28,6 +28,12 @@ export const supabaseConfigError = !supabaseUrl || !supabaseAnonKey
     ? invalidKeyError
     : null;
 
-export const supabase = supabaseConfigError
-  ? null
-  : createClient(supabaseUrl, supabaseAnonKey);
+function createSupabaseClient() {
+  if (supabaseConfigError || !supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
+
+export const supabase = createSupabaseClient();

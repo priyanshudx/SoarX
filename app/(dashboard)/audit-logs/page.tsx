@@ -1,156 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Download, ChevronUp, ChevronDown, Eye, Copy, Share2 } from 'lucide-react';
-
-interface AuditLog {
-  id: string;
-  timestamp: string;
-  user: string;
-  action: string;
-  resource: string;
-  resourceType: 'user' | 'alert' | 'policy' | 'config' | 'report' | 'system';
-  status: 'success' | 'failure' | 'warning';
-  ipAddress: string;
-  details: string;
-}
-
-const MOCK_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'LOG-001',
-    timestamp: '2024-02-22 14:45:32',
-    user: 'sarah.johnson@soar.com',
-    action: 'Viewed Alert Details',
-    resource: 'ALT-001 (Suspicious Login)',
-    resourceType: 'alert',
-    status: 'success',
-    ipAddress: '192.168.1.45',
-    details: 'User accessed critical alert details from dashboard'
-  },
-  {
-    id: 'LOG-002',
-    timestamp: '2024-02-22 14:32:18',
-    user: 'admin@soar.com',
-    action: 'Updated Security Policy',
-    resource: 'Firewall Policy - Zone A',
-    resourceType: 'policy',
-    status: 'success',
-    ipAddress: '10.0.0.5',
-    details: 'Modified inbound rules for production environment'
-  },
-  {
-    id: 'LOG-003',
-    timestamp: '2024-02-22 14:15:45',
-    user: 'james.carter@soar.com',
-    action: 'Exported Report',
-    resource: 'Weekly Security Report',
-    resourceType: 'report',
-    status: 'success',
-    ipAddress: '192.168.1.78',
-    details: 'Downloaded comprehensive security analysis report (PDF)'
-  },
-  {
-    id: 'LOG-004',
-    timestamp: '2024-02-22 13:58:22',
-    user: 'analyst@soar.com',
-    action: 'Failed Login Attempt',
-    resource: 'User Session',
-    resourceType: 'user',
-    status: 'failure',
-    ipAddress: '203.0.113.45',
-    details: 'Invalid credentials from external IP address'
-  },
-  {
-    id: 'LOG-005',
-    timestamp: '2024-02-22 13:42:10',
-    user: 'admin@soar.com',
-    action: 'Created User Account',
-    resource: 'new.analyst@soar.com',
-    resourceType: 'user',
-    status: 'success',
-    ipAddress: '10.0.0.5',
-    details: 'New analyst account provisioned with standard permissions'
-  },
-  {
-    id: 'LOG-006',
-    timestamp: '2024-02-22 13:28:55',
-    user: 'sarah.johnson@soar.com',
-    action: 'Modified Alert Threshold',
-    resource: 'Anomaly Detection Rules',
-    resourceType: 'config',
-    status: 'success',
-    ipAddress: '192.168.1.45',
-    details: 'Updated severity threshold from 70 to 75 for network anomalies'
-  },
-  {
-    id: 'LOG-007',
-    timestamp: '2024-02-22 13:15:33',
-    user: 'viewer@soar.com',
-    action: 'Access Denied',
-    resource: 'System Configuration',
-    resourceType: 'system',
-    status: 'failure',
-    ipAddress: '192.168.1.89',
-    details: 'Insufficient privileges to access configuration panel'
-  },
-  {
-    id: 'LOG-008',
-    timestamp: '2024-02-22 12:50:44',
-    user: 'admin@soar.com',
-    action: 'System Backup',
-    resource: 'Database Backup - Full',
-    resourceType: 'system',
-    status: 'success',
-    ipAddress: '10.0.0.5',
-    details: 'Full database backup completed successfully (847.2 GB)'
-  },
-  {
-    id: 'LOG-009',
-    timestamp: '2024-02-22 12:32:19',
-    user: 'james.carter@soar.com',
-    action: 'Acknowledged Alert',
-    resource: 'ALT-006 (DDoS Attack)',
-    resourceType: 'alert',
-    status: 'success',
-    ipAddress: '192.168.1.78',
-    details: 'Alert marked as acknowledged and assigned for investigation'
-  },
-  {
-    id: 'LOG-010',
-    timestamp: '2024-02-22 12:15:08',
-    user: 'admin@soar.com',
-    action: 'Configuration Change',
-    resource: 'SIEM Integration Settings',
-    resourceType: 'config',
-    status: 'warning',
-    ipAddress: '10.0.0.5',
-    details: 'Critical setting modified - review recommended'
-  }
-];
+import { Search, Download, ChevronUp, ChevronDown, Eye, Copy } from 'lucide-react';
+import { useAuditLogs } from '@/hooks/use-audit-logs';
+import type { AuditLogEntry } from '@/lib/audit-logs-service';
 
 type SortField = 'timestamp' | 'user' | 'action' | 'status';
 type SortOrder = 'asc' | 'desc';
 
 export default function AuditLogsPage() {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { logs, isLoading: loading, error } = useAuditLogs(300);
   const [searchTerm, setSearchTerm] = useState('');
   const [resourceTypeFilter, setResourceTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLogs(MOCK_AUDIT_LOGS);
-      setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
+  const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
 
   const getResourceTypeColor = (type: string) => {
     switch (type) {
@@ -184,26 +52,30 @@ export default function AuditLogsPage() {
     }
   };
 
-  let filtered = logs.filter((log) => {
-    const matchesSearch = log.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.resource.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.ipAddress.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesResourceType = resourceTypeFilter === 'all' || log.resourceType === resourceTypeFilter;
-    const matchesStatus = statusFilter === 'all' || log.status === statusFilter;
-    return matchesSearch && matchesResourceType && matchesStatus;
-  });
+  const filtered = useMemo(() => {
+    const result = logs.filter((log) => {
+      const matchesSearch =
+        log.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.resource.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.ipAddress.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesResourceType = resourceTypeFilter === 'all' || log.resourceType === resourceTypeFilter;
+      const matchesStatus = statusFilter === 'all' || log.status === statusFilter;
+      return matchesSearch && matchesResourceType && matchesStatus;
+    });
 
-  filtered.sort((a, b) => {
-    let aVal: any = a[sortField];
-    let bVal: any = b[sortField];
-    
-    if (sortOrder === 'asc') {
-      return aVal > bVal ? 1 : -1;
-    } else {
+    result.sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+
+      if (sortOrder === 'asc') {
+        return aVal > bVal ? 1 : -1;
+      }
       return aVal < bVal ? 1 : -1;
-    }
-  });
+    });
+
+    return result;
+  }, [logs, searchTerm, resourceTypeFilter, statusFilter, sortField, sortOrder]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -221,6 +93,7 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Audit Logs</h1>
           <p className="text-muted-foreground">User activities and system events audit trail</p>
+          {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         </div>
 
         {/* Summary Cards */}
