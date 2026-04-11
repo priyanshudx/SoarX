@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpDown, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,61 +13,32 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Alert } from './types';
 
-const mockAlerts: Alert[] = [
-  {
-    id: '1',
-    title: 'Suspicious Login Attempt',
-    description: 'Multiple failed login attempts detected',
-    severity: 'high',
-    riskScore: 87,
-    timestamp: '2024-01-15 14:32:00',
-    source: 'AUTH-01',
-    targetIP: '192.168.1.105',
-  },
-  {
-    id: '2',
-    title: 'Lateral Movement Detected',
-    description: 'Unusual network traffic pattern observed',
-    severity: 'critical',
-    riskScore: 95,
-    timestamp: '2024-01-15 14:28:15',
-    source: 'NET-02',
-    targetIP: '10.0.0.42',
-  },
-  {
-    id: '3',
-    title: 'Malware Signature Match',
-    description: 'Known malware signature detected in file',
-    severity: 'critical',
-    riskScore: 92,
-    timestamp: '2024-01-15 14:25:30',
-    source: 'AV-03',
-    targetIP: '172.16.0.8',
-  },
-  {
-    id: '4',
-    title: 'Privilege Escalation Attempt',
-    description: 'User attempted to elevate privileges',
-    severity: 'high',
-    riskScore: 78,
-    timestamp: '2024-01-15 14:20:45',
-    source: 'PRIV-04',
-    targetIP: '192.168.1.50',
-  },
-  {
-    id: '5',
-    title: 'Data Exfiltration Suspected',
-    description: 'Large volume of data transfer detected',
-    severity: 'medium',
-    riskScore: 65,
-    timestamp: '2024-01-15 14:15:20',
-    source: 'DLP-05',
-    targetIP: '10.0.0.99',
-  },
-];
-
 interface AlertsTableProps {
   loading?: boolean;
+  alerts?: Alert[];
+}
+
+const ALERTS_PER_PAGE = 15;
+
+function shortAlertTitle(title: string, maxLength = 34): string {
+  if (title.length <= maxLength) {
+    return title;
+  }
+
+  return `${title.slice(0, maxLength - 3)}...`;
+}
+
+function shortAlertDescription(description: string, maxLength = 88): string {
+  const compact = description
+    .replace(/meta_json=\{.*?\}\s*\|?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+
+  return `${compact.slice(0, maxLength - 3)}...`;
 }
 
 function getRiskColor(score: number): string {
@@ -91,11 +62,12 @@ function getSeverityColor(severity: string): string {
   }
 }
 
-export function AlertsTable({ loading }: AlertsTableProps) {
+export function AlertsTable({ loading, alerts = [] }: AlertsTableProps) {
   const [sortBy, setSortBy] = useState<'risk' | 'time'>('risk');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredAlerts = mockAlerts.filter(
+  const filteredAlerts = alerts.filter(
     (alert) =>
       alert.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       alert.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -108,6 +80,44 @@ export function AlertsTable({ loading }: AlertsTableProps) {
     }
     return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
   });
+
+  const totalPages = Math.max(1, Math.ceil(sortedAlerts.length / ALERTS_PER_PAGE));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortBy]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedAlerts = useMemo(() => {
+    const startIndex = (currentPage - 1) * ALERTS_PER_PAGE;
+    return sortedAlerts.slice(startIndex, startIndex + ALERTS_PER_PAGE);
+  }, [currentPage, sortedAlerts]);
+
+  const { startPage, endPage } = useMemo(() => {
+    const windowSize = 5;
+    const halfWindow = Math.floor(windowSize / 2);
+    let start = Math.max(1, currentPage - halfWindow);
+    let end = Math.min(totalPages, start + windowSize - 1);
+
+    if (end - start + 1 < windowSize) {
+      start = Math.max(1, end - windowSize + 1);
+    }
+
+    return { startPage: start, endPage: end };
+  }, [currentPage, totalPages]);
+
+  const pageNumbers = useMemo(() => {
+    return Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+  }, [endPage, startPage]);
+
+  const totalAlerts = sortedAlerts.length;
+  const showingStart = totalAlerts === 0 ? 0 : (currentPage - 1) * ALERTS_PER_PAGE + 1;
+  const showingEnd = totalAlerts === 0 ? 0 : Math.min(currentPage * ALERTS_PER_PAGE, totalAlerts);
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -147,16 +157,16 @@ export function AlertsTable({ loading }: AlertsTableProps) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="overflow-auto max-h-[660px]">
+        <table className="w-full table-fixed">
           <thead className="border-b border-border bg-muted/20">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Alert</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Source</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Target IP</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Risk Score</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Severity</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Time</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[36%]">Alert</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[14%]">Source</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[18%]">Target IP</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[12%]">Risk Score</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[10%]">Severity</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[10%]">Time</th>
             </tr>
           </thead>
           <tbody>
@@ -190,30 +200,30 @@ export function AlertsTable({ loading }: AlertsTableProps) {
                 </td>
               </tr>
             ) : (
-              sortedAlerts.map((alert) => (
+              paginatedAlerts.map((alert) => (
                 <tr
                   key={alert.id}
                   className="border-b border-border hover:bg-secondary/20 transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{alert.title}</p>
-                      <p className="text-xs text-muted-foreground">{alert.description}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate" title={alert.title}>{shortAlertTitle(alert.title)}</p>
+                      <p className="text-xs text-muted-foreground truncate" title={alert.description}>{shortAlertDescription(alert.description)}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-foreground">{alert.source}</td>
-                  <td className="px-4 py-3 text-sm font-mono text-foreground">{alert.targetIP}</td>
+                  <td className="px-4 py-3 text-sm text-foreground truncate" title={alert.source}>{alert.source}</td>
+                  <td className="px-4 py-3 text-sm font-mono text-foreground truncate" title={alert.targetIP}>{alert.targetIP}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${getRiskColor(alert.riskScore)}`}>
+                    <span className={`inline-block whitespace-nowrap px-3 py-1 rounded-full text-sm font-semibold border ${getRiskColor(alert.riskScore)}`}>
                       {alert.riskScore}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-sm font-semibold uppercase ${getSeverityColor(alert.severity)}`}>
+                    <span className={`text-sm font-semibold uppercase whitespace-nowrap ${getSeverityColor(alert.severity)}`}>
                       {alert.severity}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{alert.timestamp}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground truncate" title={alert.timestamp}>{alert.timestamp}</td>
                 </tr>
               ))
             )}
@@ -223,12 +233,42 @@ export function AlertsTable({ loading }: AlertsTableProps) {
 
       {/* Pagination */}
       <div className="border-t border-border px-4 py-3 flex items-center justify-between text-sm text-muted-foreground">
-        <span>Showing {Math.min(5, sortedAlerts.length)} of {sortedAlerts.length} alerts</span>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="border-border">
+        <span>
+          Showing {showingStart}-{showingEnd} of {totalAlerts} alerts
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-border"
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1 || loading}
+          >
             Previous
           </Button>
-          <Button variant="outline" size="sm" className="border-border">
+
+          <div className="hidden sm:flex items-center gap-1">
+            {pageNumbers.map((pageNumber) => (
+              <Button
+                key={pageNumber}
+                variant={pageNumber === currentPage ? 'default' : 'outline'}
+                size="sm"
+                className="min-w-9 border-border"
+                onClick={() => setCurrentPage(pageNumber)}
+                disabled={loading}
+              >
+                {pageNumber}
+              </Button>
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-border"
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages || loading}
+          >
             Next
           </Button>
         </div>

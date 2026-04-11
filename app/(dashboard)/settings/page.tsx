@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { supabaseConfigError } from '@/lib/supabase';
+import { importServerLogs } from '@/lib/soarx-api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Bell, Lock, Save, Check, Eye, EyeOff } from 'lucide-react';
 
 
@@ -22,6 +24,12 @@ export default function SettingsPage() {
   const [isSigningOutAllSessions, setIsSigningOutAllSessions] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [importSource, setImportSource] = useState('server-log-import');
+  const [importText, setImportText] = useState('[\n  {\n    "message": "Multiple 401 responses from same IP",\n    "level": "warning",\n    "target_ip": "203.0.113.10"\n  }\n]');
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+  const [importAuditWarning, setImportAuditWarning] = useState('');
   const [passwordForm, setPasswordForm] = useState({
     newPassword: '',
     confirmPassword: '',
@@ -224,9 +232,54 @@ export default function SettingsPage() {
     }
   };
 
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      setImportText(text);
+      setImportError('');
+      setImportSuccess('Loaded file into editor.');
+      setTimeout(() => setImportSuccess(''), 2000);
+    } catch {
+      setImportError('Failed to read selected file.');
+    }
+  };
+
+  const handleImportLogs = async () => {
+    setImportLoading(true);
+    setImportError('');
+    setImportSuccess('');
+    setImportAuditWarning('');
+
+    try {
+      const parsed = JSON.parse(importText);
+      if (!Array.isArray(parsed)) {
+        throw new Error('JSON must be an array of log objects.');
+      }
+
+      const result = await importServerLogs({
+        source: importSource.trim() || 'server-log-import',
+        logs: parsed,
+      });
+
+      setImportSuccess(`Imported ${result.imported} log(s) successfully.`);
+      if (result.audit_log_error) {
+        setImportAuditWarning(`Imported logs, but audit logging failed: ${result.audit_log_error}`);
+      }
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Failed to import logs.');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   if (loading) {
     return (
-      <main className="pt-20 lg:ml-64 pb-8">
+      <main className="pt-20 lg:ml-[var(--sidebar-offset,16rem)] pb-8 transition-all duration-300">
         <div className="p-6 lg:p-8">
           <p className="text-muted-foreground">Loading settings...</p>
         </div>
@@ -235,7 +288,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="pt-20 lg:ml-64 pb-8">
+    <main className="pt-20 lg:ml-[var(--sidebar-offset,16rem)] pb-8 transition-all duration-300">
       <div className="p-6 lg:p-8 space-y-8 max-w-6xl">
         {/* Header */}
         <div>
@@ -245,7 +298,7 @@ export default function SettingsPage() {
 
         {/* Tabs */}
         <div className="flex gap-4 border-b border-border">
-          {['account', 'notifications', 'security'].map((tab) => (
+          {['account', 'notifications', 'security', 'imports'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -560,6 +613,65 @@ export default function SettingsPage() {
                 Save Changes
               </Button>
             </div>
+          </Card>
+        )}
+
+        {/* Import Settings */}
+        {activeTab === 'imports' && (
+          <Card className="bg-card border border-border p-6 space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-foreground mb-2">Import Server Logs</h2>
+              <p className="text-sm text-muted-foreground">
+                Paste a JSON array of log objects and import them directly into the alerts table.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Source Label</label>
+                <Input
+                  value={importSource}
+                  onChange={(e) => setImportSource(e.target.value)}
+                  className="bg-secondary border-border text-foreground"
+                  placeholder="nginx-prod"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Load JSON File</label>
+                <Input type="file" accept=".json,application/json" onChange={handleImportFile} className="bg-secondary border-border text-foreground" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Logs JSON Array</label>
+              <Textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                className="bg-secondary border-border text-foreground min-h-[280px] font-mono text-sm"
+              />
+            </div>
+
+            <div className="flex justify-end gap-4 pt-4 border-t border-border">
+              <Button
+                variant="outline"
+                className="border-border"
+                onClick={() => setImportText('[]')}
+                disabled={importLoading}
+              >
+                Clear
+              </Button>
+              <Button
+                onClick={handleImportLogs}
+                disabled={importLoading}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                {importLoading ? 'Importing...' : 'Import Logs'}
+              </Button>
+            </div>
+
+            {importError && <p className="text-sm text-destructive">{importError}</p>}
+            {importSuccess && <p className="text-sm text-primary">{importSuccess}</p>}
+            {importAuditWarning && <p className="text-sm text-warning">{importAuditWarning}</p>}
           </Card>
         )}
 
