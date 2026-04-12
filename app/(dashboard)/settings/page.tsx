@@ -24,7 +24,7 @@ export default function SettingsPage() {
   const [isSigningOutAllSessions, setIsSigningOutAllSessions] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
-  const [importSource, setImportSource] = useState('server-log-import');
+  const [importSource, setImportSource] = useState('');
   const [importText, setImportText] = useState('[\n  {\n    "message": "Multiple 401 responses from same IP",\n    "level": "warning",\n    "target_ip": "203.0.113.10"\n  }\n]');
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
@@ -66,6 +66,8 @@ export default function SettingsPage() {
       name: user.name || '',
       email: user.email || '',
     }));
+
+    setImportSource((prev) => prev || user.email || '');
   }, [user]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -261,9 +263,45 @@ export default function SettingsPage() {
         throw new Error('JSON must be an array of log objects.');
       }
 
+      const normalizedLogs = parsed
+        .map((entry) => {
+          if (typeof entry === 'string') {
+            const trimmed = entry.trim();
+            return trimmed ? { log: trimmed } : null;
+          }
+
+          if (!entry || typeof entry !== 'object') {
+            return null;
+          }
+
+          const candidate = entry as Record<string, unknown>;
+          const message = typeof candidate.message === 'string' ? candidate.message : undefined;
+          const log =
+            typeof candidate.log === 'string'
+              ? candidate.log
+              : typeof candidate.raw === 'string'
+                ? candidate.raw
+                : undefined;
+
+          if (!message && !log) {
+            return null;
+          }
+
+          return {
+            ...candidate,
+            ...(message ? { message } : {}),
+            ...(log ? { log } : {}),
+          };
+        })
+        .filter((entry): entry is Record<string, unknown> => entry !== null);
+
+      if (normalizedLogs.length === 0) {
+        throw new Error('Each log entry must include at least message or log (or be a non-empty string).');
+      }
+
       const result = await importServerLogs({
-        source: importSource.trim() || 'server-log-import',
-        logs: parsed,
+        source: importSource.trim() || user?.email || 'server-log-import',
+        logs: normalizedLogs,
       });
 
       setImportSuccess(`Imported ${result.imported} log(s) successfully.`);

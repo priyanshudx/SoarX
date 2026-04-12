@@ -20,6 +20,48 @@ interface AlertsTableProps {
 
 const ALERTS_PER_PAGE = 15;
 
+function formatTimestampToIST(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp;
+  }
+
+  return `${new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)} IST`;
+}
+
+function formatTimestampPartsToIST(timestamp: string): { date: string; time: string } {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return { date: timestamp, time: 'IST' };
+  }
+
+  const datePart = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+
+  const timePart = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
+
+  return { date: datePart, time: `${timePart} IST` };
+}
+
 function shortAlertTitle(title: string, maxLength = 34): string {
   if (title.length <= maxLength) {
     return title;
@@ -223,7 +265,12 @@ export function AlertsTable({ loading, alerts = [] }: AlertsTableProps) {
                       {alert.severity}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground truncate" title={alert.timestamp}>{alert.timestamp}</td>
+                  <td className="px-4 py-3 text-sm text-foreground min-w-0">
+                    <div className="leading-tight" title={formatTimestampToIST(alert.timestamp)}>
+                      <p className="whitespace-nowrap">{formatTimestampPartsToIST(alert.timestamp).date}</p>
+                      <p className="text-xs text-muted-foreground whitespace-nowrap">{formatTimestampPartsToIST(alert.timestamp).time}</p>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}
