@@ -160,7 +160,18 @@ export async function importServerLogs(
   });
 
   if (!response.ok) {
-    throw new Error(`Import request failed with status ${response.status}`);
+    let detail = '';
+    try {
+      const errorBody = (await response.json()) as { detail?: unknown };
+      if (typeof errorBody?.detail === 'string') {
+        detail = errorBody.detail;
+      }
+    } catch {
+      // Ignore parse failures and fall back to status message.
+    }
+
+    const suffix = detail ? `: ${detail}` : '';
+    throw new Error(`Import request failed with status ${response.status}${suffix}`);
   }
 
   const data = (await response.json()) as {

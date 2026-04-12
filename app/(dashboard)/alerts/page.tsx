@@ -19,6 +19,48 @@ import type { SecurityAlert } from '@/lib/alerts-service';
 type SortField = 'timestamp' | 'riskScore' | 'severity';
 type SortOrder = 'asc' | 'desc';
 
+function formatTimestampToIST(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp;
+  }
+
+  return `${new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)} IST`;
+}
+
+function formatTimestampPartsToIST(timestamp: string): { date: string; time: string } {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return { date: timestamp, time: 'IST' };
+  }
+
+  const datePart = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+
+  const timePart = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
+
+  return { date: datePart, time: `${timePart} IST` };
+}
+
 type ExplainabilityMeta = {
   schema?: string;
   request?: string | null;
@@ -400,9 +442,9 @@ export default function AlertsPage() {
               <table className="w-full table-fixed">
                 <thead>
                   <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground w-[34%]">Threat</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground w-[32%]">Threat</th>
                     <th
-                      className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50"
+                      className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50 w-[16%]"
                       onClick={() => toggleSort('timestamp')}
                     >
                       <div className="flex items-center gap-2">
@@ -412,9 +454,9 @@ export default function AlertsPage() {
                         )}
                       </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Source</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground w-[18%]">Source</th>
                     <th
-                      className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50"
+                      className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50 w-[10%]"
                       onClick={() => toggleSort('riskScore')}
                     >
                       <div className="flex items-center gap-2">
@@ -425,7 +467,7 @@ export default function AlertsPage() {
                       </div>
                     </th>
                     <th
-                      className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50"
+                      className="px-6 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-secondary/50 w-[8%]"
                       onClick={() => toggleSort('severity')}
                     >
                       <div className="flex items-center gap-2">
@@ -435,8 +477,8 @@ export default function AlertsPage() {
                         )}
                       </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Status</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Action</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground w-[9%]">Status</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-foreground w-[7%]">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -451,8 +493,15 @@ export default function AlertsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-3 text-sm text-foreground">{alert.timestamp}</td>
-                      <td className="px-6 py-3 text-sm font-mono text-muted-foreground">{alert.source}</td>
+                      <td className="px-6 py-3 text-sm text-foreground min-w-0">
+                        <div className="leading-tight" title={formatTimestampToIST(alert.timestamp)}>
+                          <p className="whitespace-nowrap">{formatTimestampPartsToIST(alert.timestamp).date}</p>
+                          <p className="text-xs text-muted-foreground whitespace-nowrap">{formatTimestampPartsToIST(alert.timestamp).time}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3 text-sm text-muted-foreground min-w-0">
+                        <span className="block truncate whitespace-nowrap" title={alert.source}>{alert.source}</span>
+                      </td>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-2">
                           <div className="w-16 h-2 bg-secondary rounded-full overflow-hidden">
@@ -467,12 +516,12 @@ export default function AlertsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-3">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getSeverityColor(alert.severity)}`}>
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${getSeverityColor(alert.severity)}`}>
                           {alert.severity.charAt(0).toUpperCase() + alert.severity.slice(1)}
                         </span>
                       </td>
                       <td className="px-6 py-3">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(alert.status)}`}>
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${getStatusColor(alert.status)}`}>
                           {alert.status.charAt(0).toUpperCase() + alert.status.slice(1)}
                         </span>
                       </td>
@@ -530,7 +579,7 @@ export default function AlertsPage() {
                   </div>
                   <div className="rounded-lg border border-border p-3 min-w-0">
                     <p className="text-xs text-muted-foreground">Timestamp</p>
-                    <p className="text-sm text-foreground break-words">{selectedAlert.timestamp}</p>
+                    <p className="text-sm text-foreground break-words">{formatTimestampToIST(selectedAlert.timestamp)}</p>
                   </div>
                   <div className="rounded-lg border border-border p-3 min-w-0">
                     <p className="text-xs text-muted-foreground">Severity / Status</p>
