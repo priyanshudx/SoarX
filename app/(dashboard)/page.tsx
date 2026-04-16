@@ -8,8 +8,7 @@ import { MetricCard } from '@/components/soar-x/metric-card';
 import { AlertsTable } from '@/components/soar-x/alerts-table';
 import { PerEventExplanationsSection } from '@/components/soar-x/explainable-ai-panel';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { checkBackendHealth, predictAndStoreThreat, predictThreatWithRetry } from '@/lib/soarx-api';
+import { checkBackendHealth, predictThreatWithRetry } from '@/lib/soarx-api';
 import { buildPredictRequestFromAlerts } from '@/lib/security-feature-engineering';
 import { useAlerts } from '@/hooks/use-alerts';
 import { useAuth } from '@/context/auth-context';
@@ -31,8 +30,7 @@ export default function Dashboard() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [apiError, setApiError] = useState('');
   const [predictionLoading, setPredictionLoading] = useState(true);
-  const [storeLoading, setStoreLoading] = useState(false);
-  const { alerts, isLoading: alertsLoading, error: alertsError, refresh: refreshAlerts } = useAlerts(200, user?.email);
+  const { alerts, isLoading: alertsLoading, error: alertsError, refresh: refreshAlerts } = useAlerts(1000, user?.email);
 
   const totalAlerts = alerts.length;
   const highRiskAlerts = alerts.filter((alert) => alert.riskScore >= 80).length;
@@ -49,19 +47,13 @@ export default function Dashboard() {
       }, 0) / aiEnrichedAlerts.length
     : null;
 
-  const avgHeuristicRisk = aiEnrichedAlerts.length
-    ? aiEnrichedAlerts.reduce((sum, alert) => {
-        const score = extractMetricFromDescription(alert.description, 'heuristic_risk') ?? 0;
-        return sum + score;
-      }, 0) / aiEnrichedAlerts.length
-    : null;
-
   const averageRiskScore = totalAlerts
     ? (alerts.reduce((sum, alert) => sum + alert.riskScore, 0) / totalAlerts).toFixed(1)
     : '0.0';
 
   const modelConfidenceDisplay = avgModelConfidence !== null ? `${avgModelConfidence.toFixed(1)}%` : modelConfidence;
-  const loading = alertsLoading || predictionLoading;
+  const metricsLoading = alertsLoading || predictionLoading;
+  const alertsSectionLoading = alertsLoading;
 
   const loadDashboardData = useCallback(async () => {
     setPredictionLoading(true);
@@ -85,41 +77,6 @@ export default function Dashboard() {
       setPredictionLoading(false);
     }
   }, [alerts]);
-
-  const handleRetry = useCallback(async () => {
-    await refreshAlerts();
-  }, [refreshAlerts]);
-
-  const handleRunDetectionAndStore = useCallback(async () => {
-    if (alerts.length === 0) {
-      setApiError('No alerts available to analyze.');
-      return;
-    }
-
-    setStoreLoading(true);
-    setApiError('');
-
-    try {
-      await checkBackendHealth();
-      setBackendStatus('online');
-
-      const payload = buildPredictRequestFromAlerts(alerts);
-      const result = await predictAndStoreThreat({
-        data: payload.data,
-        source: user?.email || 'dashboard-ui',
-      });
-
-      const confidencePercent = Math.max(0, Math.min(100, Math.round(result.confidence * 100)));
-      setModelConfidence(`${confidencePercent}%`);
-
-      await refreshAlerts();
-    } catch (error) {
-      setBackendStatus('offline');
-      setApiError(error instanceof Error ? error.message : 'Failed to run and store AI detection.');
-    } finally {
-      setStoreLoading(false);
-    }
-  }, [alerts, refreshAlerts, user?.email]);
 
   // Load prediction from backend and handle hydration.
   useEffect(() => {
@@ -153,20 +110,6 @@ export default function Dashboard() {
                 <Server size={12} />
                 Backend {backendStatus}
               </Badge>
-              <Badge variant="secondary">AI-enriched alerts {aiEnrichedAlerts.length}</Badge>
-              {avgHeuristicRisk !== null && (
-                <Badge variant="secondary">Avg heuristic risk {avgHeuristicRisk.toFixed(1)}%</Badge>
-              )}
-              <Button variant="outline" size="sm" onClick={handleRunDetectionAndStore} disabled={storeLoading || alertsLoading}>
-                <RefreshCw size={14} className={`mr-2 ${storeLoading ? 'animate-spin' : ''}`} />
-                {storeLoading ? 'Running Detection...' : 'Run Detection & Store Alert'}
-              </Button>
-              {(apiError || alertsError) && (
-                <Button variant="outline" size="sm" onClick={handleRetry}>
-                  <RefreshCw size={14} className="mr-2" />
-                  Retry Data Load
-                </Button>
-              )}
             </div>
             {(apiError || alertsError) && (
               <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -182,39 +125,39 @@ export default function Dashboard() {
               <>
                 <MetricCard
                   title="Total Alerts"
-                  value={loading ? '---' : totalAlerts}
+                  value={metricsLoading ? '---' : totalAlerts}
                   description="Last 24 hours"
                   trend="up"
                   trendValue={12}
-                  loading={loading}
+                  loading={metricsLoading}
                   icon={<AlertTriangle size={20} />}
                   color="blue"
                 />
                 <MetricCard
                   title="High Risk Alerts"
-                  value={loading ? '---' : highRiskAlerts}
+                  value={metricsLoading ? '---' : highRiskAlerts}
                   description="Require attention"
                   trend="down"
                   trendValue={8}
-                  loading={loading}
+                  loading={metricsLoading}
                   icon={<Zap size={20} />}
                   color="red"
                 />
                 <MetricCard
                   title="Average Risk Score"
-                  value={loading ? '---' : averageRiskScore}
+                  value={metricsLoading ? '---' : averageRiskScore}
                   description="Final blended risk (AI + heuristic)"
                   trend="stable"
-                  loading={loading}
+                  loading={metricsLoading}
                   icon={<TrendingUp size={20} />}
                   color="amber"
                 />
                 <MetricCard
                   title="Raw Model Confidence"
-                  value={loading ? '---' : modelConfidenceDisplay}
+                  value={metricsLoading ? '---' : modelConfidenceDisplay}
                   description="Model-only probability before heuristics"
                   trend="stable"
-                  loading={loading}
+                  loading={metricsLoading}
                   icon={<Brain size={20} />}
                   color="cyan"
                 />
@@ -232,13 +175,13 @@ export default function Dashboard() {
                     <h2 className="text-xl font-bold text-foreground">Recent Alerts</h2>
                     <p className="text-sm text-muted-foreground">Sortable and filterable security alerts</p>
                   </div>
-                  <AlertsTable loading={loading} alerts={alerts} />
+                  <AlertsTable loading={alertsSectionLoading} alerts={alerts} />
 
                   <div className="mt-6">
                     <h2 className="text-xl font-bold text-foreground">Per-Event Explanations</h2>
                     <p className="text-sm text-muted-foreground">Human-readable reasoning for each high-risk event</p>
                   </div>
-                  <PerEventExplanationsSection loading={loading} alerts={alerts} className="mt-4" />
+                  <PerEventExplanationsSection loading={alertsSectionLoading} alerts={alerts} className="mt-4" />
                 </div>
               </>
             )}

@@ -2,11 +2,13 @@ import json
 import os
 import re
 import ssl
+import base64
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Literal
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +38,7 @@ def _load_dotenv_file(env_path: Path) -> None:
 
 
 _load_dotenv_file(BASE_DIR / '.env')
+_load_dotenv_file(BASE_DIR.parent / '.env.local')
 
 model = joblib.load(BASE_DIR / "soarx_model.pkl")
 scaler = joblib.load(BASE_DIR / "scaler.pkl")
@@ -100,14 +103,61 @@ class ServerLogImportIn(BaseModel):
     logs: list[ServerLogIn]
 
 
+class ResetAlertsIn(BaseModel):
+    source: str
+
+
 APACHE_LOG_PATTERN = re.compile(
     r'^(?P<ip>\S+)\s+\S+\s+\S+\s+\[(?P<timestamp>[^\]]+)\]\s+"(?P<request>[^"]+)"\s+(?P<status>\d{3})\s+(?P<size>\S+)'
 )
 
+SUPABASE_PATH_SUFFIXES = (
+    "/rest/v1",
+    "/auth/v1",
+    "/storage/v1",
+    "/functions/v1",
+    "/realtime/v1",
+)
+
+
+def _strip_supabase_api_path(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path.rstrip("/")
+
+    for suffix in SUPABASE_PATH_SUFFIXES:
+        if path.endswith(suffix):
+            path = path[: -len(suffix)]
+            break
+
+    return parsed._replace(path=path, params="", query="", fragment="").geturl().rstrip("/")
+
+
+def _is_valid_supabase_host(hostname: str | None) -> bool:
+    if not hostname:
+        return False
+
+    if hostname in {"localhost", "127.0.0.1"}:
+        return False
+
+    # For cloud-hosted Supabase projects.
+    return hostname.endswith(".supabase.co")
+
 
 def _get_supabase_credentials() -> tuple[str, str]:
     supabase_url = os.getenv("SUPABASE_URL")
+    public_supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url and public_supabase_url:
+        supabase_url = public_supabase_url
+
+    # In local dev shells, SUPABASE_URL is sometimes mistakenly set to localhost.
+    # Fall back to NEXT_PUBLIC_SUPABASE_URL if it looks like a real Supabase host.
+    if supabase_url and public_supabase_url:
+        parsed_supabase = urlparse(supabase_url)
+        parsed_public = urlparse(public_supabase_url)
+        if parsed_supabase.hostname in {"localhost", "127.0.0.1"} and parsed_public.hostname not in {"", "localhost", "127.0.0.1"}:
+            supabase_url = public_supabase_url
 
     if not supabase_url or not service_role_key:
         raise HTTPException(
@@ -115,7 +165,38 @@ def _get_supabase_credentials() -> tuple[str, str]:
             detail="Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in backend environment.",
         )
 
+    supabase_url = _strip_supabase_api_path(supabase_url)
+    parsed = urlparse(supabase_url)
+    fallback_url = _supabase_url_from_service_role_key(service_role_key)
+
+    invalid_url = parsed.scheme not in {"http", "https"} or not _is_valid_supabase_host(parsed.hostname)
+    if invalid_url:
+        if fallback_url:
+            supabase_url = fallback_url
+        else:
+            raise HTTPException(status_code=500, detail="Invalid SUPABASE_URL and could not derive fallback URL from service role key.")
+
     return supabase_url.rstrip("/"), service_role_key
+
+
+def _supabase_url_from_service_role_key(service_role_key: str) -> str | None:
+    parts = service_role_key.split('.')
+    if len(parts) != 3:
+        return None
+
+    payload_b64 = parts[1]
+    padding = '=' * (-len(payload_b64) % 4)
+
+    try:
+        decoded = base64.urlsafe_b64decode(payload_b64 + padding).decode('utf-8')
+        payload = json.loads(decoded)
+        project_ref = payload.get("ref")
+        if isinstance(project_ref, str) and project_ref:
+            return f"https://{project_ref}.supabase.co"
+    except Exception:
+        return None
+
+    return None
 
 
 def _normalize_alert_payload(alert: AlertIn) -> dict:
@@ -181,6 +262,34 @@ def _insert_audit_log_rows(rows: list[dict]) -> list[dict]:
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8")
         raise HTTPException(status_code=exc.code, detail=f"Supabase audit log insert failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to connect to Supabase: {exc.reason}") from exc
+
+
+def _delete_alert_rows_by_source(source: str) -> int:
+    supabase_url, service_role_key = _get_supabase_credentials()
+    encoded_source = quote(source, safe="")
+    endpoint = f"{supabase_url}/rest/v1/alerts?source=eq.{encoded_source}"
+
+    req = urllib_request.Request(
+        endpoint,
+        method="DELETE",
+        headers={
+            "Content-Type": "application/json",
+            "apikey": service_role_key,
+            "Authorization": f"Bearer {service_role_key}",
+            "Prefer": "return=representation",
+        },
+    )
+
+    try:
+        with _urlopen_with_ssl_fallback(req, timeout=20) as response:
+            raw = response.read().decode("utf-8")
+            deleted = json.loads(raw) if raw else []
+            return len(deleted) if isinstance(deleted, list) else 0
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8")
+        raise HTTPException(status_code=exc.code, detail=f"Supabase delete failed: {detail}") from exc
     except urllib_error.URLError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to connect to Supabase: {exc.reason}") from exc
 
@@ -695,4 +804,18 @@ def import_server_logs(input_data: ServerLogImportIn):
         "normal_events": normal_events,
         "average_risk_score": average_risk_score,
         "audit_log_error": audit_log_error,
+    }
+
+
+@app.post("/alerts/reset")
+def reset_alerts_for_source(input_data: ResetAlertsIn):
+    source = input_data.source.strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="source is required")
+
+    deleted_count = _delete_alert_rows_by_source(source)
+
+    return {
+        "deleted": deleted_count,
+        "source": source,
     }
