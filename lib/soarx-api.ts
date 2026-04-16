@@ -56,6 +56,15 @@ export interface ImportServerLogsResponse {
   audit_log_error?: string | null;
 }
 
+export interface ResetAlertsRequest {
+  source: string;
+}
+
+export interface ResetAlertsResponse {
+  deleted: number;
+  source: string;
+}
+
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8000';
 
 function getApiBaseUrl(): string {
@@ -188,6 +197,46 @@ export async function importServerLogs(
     imported: data.imported,
     data: data.data,
     audit_log_error: data.audit_log_error ?? null,
+  };
+}
+
+export async function resetAlerts(payload: ResetAlertsRequest): Promise<ResetAlertsResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/alerts/reset`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const errorBody = (await response.json()) as { detail?: unknown };
+      if (typeof errorBody?.detail === 'string') {
+        detail = errorBody.detail;
+      }
+    } catch {
+      // Ignore parse failures and fall back to status message.
+    }
+
+    const suffix = detail ? `: ${detail}` : '';
+    throw new Error(`Reset request failed with status ${response.status}${suffix}`);
+  }
+
+  const data = (await response.json()) as {
+    deleted?: number;
+    source?: string;
+  };
+
+  if (!data || typeof data.deleted !== 'number' || typeof data.source !== 'string') {
+    throw new Error('Unexpected alerts reset response format');
+  }
+
+  return {
+    deleted: data.deleted,
+    source: data.source,
   };
 }
 

@@ -12,6 +12,29 @@ import { useAuth } from '@/context/auth-context';
 type SortField = 'timestamp' | 'user' | 'action' | 'status';
 type SortOrder = 'asc' | 'desc';
 
+function escapeCsvValue(value: unknown): string {
+  const normalized = String(value ?? '').replace(/"/g, '""');
+  return `"${normalized}"`;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: Array<Array<unknown>>): void {
+  const csvLines = [
+    headers.map(escapeCsvValue).join(','),
+    ...rows.map((row) => row.map(escapeCsvValue).join(',')),
+  ];
+  const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
 export default function AuditLogsPage() {
   const { user } = useAuth();
   const { logs, isLoading: loading, error } = useAuditLogs(300, user?.email);
@@ -86,6 +109,25 @@ export default function AuditLogsPage() {
       setSortField(field);
       setSortOrder('desc');
     }
+  };
+
+  const handleExport = () => {
+    if (filtered.length === 0) return;
+
+    const headers = ['id', 'timestamp', 'user', 'action', 'resource', 'resourceType', 'ipAddress', 'status', 'details'];
+    const rows = filtered.map((log) => [
+      log.id,
+      log.timestamp,
+      log.user,
+      log.action,
+      log.resource,
+      log.resourceType,
+      log.ipAddress,
+      log.status,
+      log.details,
+    ]);
+
+    downloadCsv(`audit-logs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, headers, rows);
   };
 
   return (
@@ -169,7 +211,13 @@ export default function AuditLogsPage() {
             </div>
 
             {/* Action Buttons */}
-            <Button variant="outline" size="sm" className="border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-border"
+              onClick={handleExport}
+              disabled={filtered.length === 0}
+            >
               <Download size={16} className="mr-2" />
               Export
             </Button>

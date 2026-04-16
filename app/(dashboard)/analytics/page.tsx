@@ -6,14 +6,6 @@ import { TrendingUp, TrendingDown, BarChart3, PieChart as PieChartIcon } from 'l
 import { useAlerts } from '@/hooks/use-alerts';
 import { useAuth } from '@/context/auth-context';
 
-const detectionMethodsData = [
-  { method: 'IDS/IPS', detections: 245, prevention: 92 },
-  { method: 'SIEM', detections: 189, prevention: 78 },
-  { method: 'EDR', detections: 156, prevention: 68 },
-  { method: 'WAF', detections: 134, prevention: 61 },
-  { method: 'DNS Filter', detections: 98, prevention: 45 }
-];
-
 const threatPalette: Record<string, string> = {
   Malware: '#ef4444',
   Phishing: '#f59e0b',
@@ -23,73 +15,297 @@ const threatPalette: Record<string, string> = {
   Other: '#9ca3af',
 };
 
-function classifyThreat(title: string): string {
-  const value = title.toLowerCase();
-  if (value.includes('malware') || value.includes('ransomware')) return 'Malware';
-  if (value.includes('phishing')) return 'Phishing';
-  if (value.includes('exfiltration') || value.includes('data')) return 'Data Exfiltration';
-  if (value.includes('privilege')) return 'Privilege Escalation';
-  if (value.includes('lateral') || value.includes('traffic')) return 'Lateral Movement';
+type ExplainabilityMeta = {
+  schema?: string;
+  indicators?: string[];
+};
+
+function extractJsonObjectAfterPrefix(content: string, prefix: string): string | null {
+  const prefixIndex = content.indexOf(prefix);
+  if (prefixIndex === -1) return null;
+
+  const jsonStart = content.indexOf('{', prefixIndex + prefix.length);
+  if (jsonStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = jsonStart; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(jsonStart, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseMetaJson(description: string): ExplainabilityMeta | null {
+  const jsonRaw = extractJsonObjectAfterPrefix(description, 'meta_json=');
+  if (!jsonRaw) return null;
+
+  try {
+    const parsed = JSON.parse(jsonRaw) as ExplainabilityMeta;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+type BasicAlert = {
+  title: string;
+  description: string;
+  severity: string;
+  riskScore: number;
+  source: string;
+  timestamp: string;
+};
+
+function classifyThreat(alert: Pick<BasicAlert, 'title' | 'description' | 'source'>): string {
+  const value = `${alert.title} ${alert.description || ''} ${alert.source || ''}`.toLowerCase();
+  const meta = parseMetaJson(alert.description);
+  const indicators = Array.isArray(meta?.indicators)
+    ? meta.indicators.map((item) => item.toLowerCase())
+    : [];
+
+  const hasIndicator = (...needles: string[]) =>
+    indicators.some((indicator) => needles.some((needle) => indicator.includes(needle)));
+
+  if (hasIndicator('phishing', 'credential', 'email', 'login')) {
+    return 'Phishing';
+  }
+
+  if (hasIndicator('ransomware', 'malware', 'trojan', 'virus', 'worm')) {
+    return 'Malware';
+  }
+
+  if (hasIndicator('exfiltration', 'data theft', 'data leak', 'stolen data', 'sensitive data')) {
+    return 'Data Exfiltration';
+  }
+
+  if (hasIndicator('privilege escalation', 'elevation', 'admin access', 'root access')) {
+    return 'Privilege Escalation';
+  }
+
+  if (hasIndicator('lateral movement', 'pivot', 'internal movement', 'remote host')) {
+    return 'Lateral Movement';
+  }
+
+  if (
+    value.includes('phishing') ||
+    value.includes('credential') ||
+    value.includes('login attempt') ||
+    value.includes('suspicious email')
+  ) {
+    return 'Phishing';
+  }
+
+  if (
+    value.includes('ransomware') ||
+    value.includes('malware') ||
+    value.includes('trojan') ||
+    value.includes('virus') ||
+    value.includes('worm')
+  ) {
+    return 'Malware';
+  }
+
+  if (
+    value.includes('exfiltration') ||
+    value.includes('data leak') ||
+    value.includes('data theft') ||
+    value.includes('downloaded sensitive') ||
+    value.includes('stolen data')
+  ) {
+    return 'Data Exfiltration';
+  }
+
+  if (
+    value.includes('privilege escalation') ||
+    value.includes('elevation of privilege') ||
+    value.includes('admin access') ||
+    value.includes('root access')
+  ) {
+    return 'Privilege Escalation';
+  }
+
+  if (
+    value.includes('lateral movement') ||
+    value.includes('pivot') ||
+    value.includes('internal movement') ||
+    value.includes('remote host')
+  ) {
+    return 'Lateral Movement';
+  }
+
+  if (
+    value.includes('sql injection') ||
+    value.includes('sql-injection-pattern') ||
+    value.includes('union select') ||
+    value.includes('xss') ||
+    value.includes('cross-site scripting') ||
+    value.includes('path traversal') ||
+    value.includes('command injection')
+  ) {
+    return 'Other';
+  }
+
   return 'Other';
 }
 
-function buildAlertTrendData(alerts: Array<{ severity: string }>) {
-  const sample = {
-    critical: alerts.filter((a) => a.severity === 'critical').length,
-    high: alerts.filter((a) => a.severity === 'high').length,
-    medium: alerts.filter((a) => a.severity === 'medium').length,
-    low: alerts.filter((a) => a.severity === 'low').length,
-  };
-
-  return [
-    { date: 'Day 1', critical: Math.max(0, sample.critical - 1), high: Math.max(0, sample.high - 1), medium: Math.max(0, sample.medium - 1), low: sample.low },
-    { date: 'Day 2', critical: sample.critical, high: Math.max(0, sample.high - 1), medium: sample.medium, low: sample.low },
-    { date: 'Day 3', critical: sample.critical, high: sample.high, medium: sample.medium, low: sample.low },
-    { date: 'Day 4', critical: sample.critical + 1, high: sample.high, medium: sample.medium, low: sample.low },
-    { date: 'Day 5', critical: sample.critical, high: sample.high + 1, medium: sample.medium, low: sample.low },
-    { date: 'Day 6', critical: sample.critical, high: sample.high, medium: sample.medium + 1, low: sample.low },
-    { date: 'Day 7', critical: sample.critical, high: sample.high, medium: sample.medium, low: sample.low },
-  ];
+function formatDayLabel(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function buildThreatDistributionData(alerts: Array<{ title: string }>) {
+function dayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildAlertTrendData(alerts: BasicAlert[]) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const dayBuckets: Array<{
+    key: string;
+    date: string;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  }> = [];
+
+  for (let i = 6; i >= 0; i -= 1) {
+    const bucketDate = new Date(today);
+    bucketDate.setDate(today.getDate() - i);
+    dayBuckets.push({
+      key: dayKey(bucketDate),
+      date: formatDayLabel(bucketDate),
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    });
+  }
+
+  const indexByKey = new Map(dayBuckets.map((bucket, index) => [bucket.key, index]));
+
+  for (const alert of alerts) {
+    const parsed = new Date(alert.timestamp);
+    if (Number.isNaN(parsed.getTime())) {
+      continue;
+    }
+
+    const key = dayKey(parsed);
+    const idx = indexByKey.get(key);
+    if (idx === undefined) {
+      continue;
+    }
+
+    const bucket = dayBuckets[idx];
+    if (alert.severity === 'critical') bucket.critical += 1;
+    else if (alert.severity === 'high') bucket.high += 1;
+    else if (alert.severity === 'medium') bucket.medium += 1;
+    else bucket.low += 1;
+  }
+
+  return dayBuckets.map(({ key: _key, ...rest }) => rest);
+}
+
+function buildThreatDistributionData(alerts: Pick<BasicAlert, 'title' | 'description' | 'source'>[]) {
   const counts = new Map<string, number>();
 
   for (const alert of alerts) {
-    const category = classifyThreat(alert.title);
+    const category = classifyThreat(alert);
     counts.set(category, (counts.get(category) || 0) + 1);
   }
 
+  const total = alerts.length;
+
   return Array.from(counts.entries()).map(([name, count]) => ({
     name,
+    count,
     value: count,
+    percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
     color: threatPalette[name] || threatPalette.Other,
-  }));
+  })).sort((a, b) => b.count - a.count);
 }
 
-function buildSeverityDistributionData(alerts: Array<{ severity: string; riskScore: number }>) {
+function buildSeverityDistributionData(alerts: Pick<BasicAlert, 'severity' | 'riskScore'>[]) {
   const critical = alerts.filter((a) => a.severity === 'critical');
   const high = alerts.filter((a) => a.severity === 'high');
   const medium = alerts.filter((a) => a.severity === 'medium');
   const low = alerts.filter((a) => a.severity === 'low');
 
-  const toValue = (rows: Array<{ riskScore: number }>) => rows.reduce((sum, row) => sum + row.riskScore, 0);
+  const toAverageRisk = (rows: Array<{ riskScore: number }>) => {
+    if (!rows.length) return 0;
+    return Math.round((rows.reduce((sum, row) => sum + row.riskScore, 0) / rows.length) * 10) / 10;
+  };
 
   return [
-    { name: 'Critical', value: toValue(critical), incidents: critical.length, color: '#ef4444' },
-    { name: 'High', value: toValue(high), incidents: high.length, color: '#f59e0b' },
-    { name: 'Medium', value: toValue(medium), incidents: medium.length, color: '#06b6d4' },
-    { name: 'Low', value: toValue(low), incidents: low.length, color: '#10b981' },
+    { name: 'Critical', incidents: critical.length, averageRisk: toAverageRisk(critical), color: '#ef4444' },
+    { name: 'High', incidents: high.length, averageRisk: toAverageRisk(high), color: '#f59e0b' },
+    { name: 'Medium', incidents: medium.length, averageRisk: toAverageRisk(medium), color: '#06b6d4' },
+    { name: 'Low', incidents: low.length, averageRisk: toAverageRisk(low), color: '#10b981' },
   ];
+}
+
+function buildDetectionMethodsData(alerts: Pick<BasicAlert, 'source' | 'riskScore'>[]) {
+  const grouped = new Map<string, { detections: number; prevented: number }>();
+
+  for (const alert of alerts) {
+    const method = alert.source?.trim() || 'Unknown';
+    const current = grouped.get(method) || { detections: 0, prevented: 0 };
+    current.detections += 1;
+    if (alert.riskScore < 80) {
+      current.prevented += 1;
+    }
+    grouped.set(method, current);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([method, stats]) => ({
+      method,
+      detections: stats.detections,
+      prevention: stats.prevented,
+      successRate: stats.detections > 0 ? Math.round((stats.prevented / stats.detections) * 100) : 0,
+    }))
+    .sort((a, b) => b.detections - a.detections)
+    .slice(0, 8);
 }
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
-  const { alerts, isLoading: loading } = useAlerts(200, user?.email);
+  const { alerts, isLoading: loading } = useAlerts(1000, user?.email);
 
   const alertTrendsData = buildAlertTrendData(alerts);
   const threatDistributionData = buildThreatDistributionData(alerts);
   const severityDistributionData = buildSeverityDistributionData(alerts);
+  const detectionMethodsData = buildDetectionMethodsData(alerts);
   const totalAlerts = alerts.length;
   const criticalAlerts = alerts.filter((a) => a.severity === 'critical').length;
   const averageRiskScore =
@@ -121,7 +337,7 @@ export default function AnalyticsPage() {
           <Card className="bg-card border border-border p-4">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Total Alerts (7d)</p>
+                <p className="text-sm text-muted-foreground mb-1">Total Alerts</p>
                 <p className="text-2xl font-bold text-foreground">{totalAlerts}</p>
                 <p className="text-xs text-success mt-2 flex items-center gap-1">
                   <TrendingDown size={12} /> Synced with dashboard alerts
@@ -175,7 +391,7 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Alert Trends */}
           <Card className="bg-card border border-border p-6">
-            <h2 className="text-lg font-bold text-foreground mb-4">Alert Trends (7 Days)</h2>
+            <h2 className="text-lg font-bold text-foreground mb-4">Alert Trends (Last 7 Days)</h2>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={alertTrendsData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e2749" />
@@ -204,7 +420,10 @@ export default function AnalyticsPage() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}%`}
+                  label={({ name, payload }) => {
+                    const percent = typeof payload?.percentage === 'number' ? payload.percentage : 0;
+                    return `${name}: ${percent}%`;
+                  }}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
@@ -224,7 +443,7 @@ export default function AnalyticsPage() {
 
         {/* Severity Distribution */}
         <Card className="bg-card border border-border p-6">
-          <h2 className="text-lg font-bold text-foreground mb-4">Severity Distribution & Incident Count</h2>
+            <h2 className="text-lg font-bold text-foreground mb-4">Severity Distribution</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={severityDistributionData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e2749" />
@@ -235,8 +454,8 @@ export default function AnalyticsPage() {
                 labelStyle={{ color: '#e8eef7' }}
               />
               <Legend />
-              <Bar dataKey="value" name="Total Alerts" fill="#3b82f6" radius={[8, 8, 0, 0]} />
               <Bar dataKey="incidents" name="Incidents" fill="#06b6d4" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="averageRisk" name="Avg Risk Score" fill="#3b82f6" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -283,14 +502,14 @@ export default function AnalyticsPage() {
                         <span className="text-foreground">{threat.name}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-foreground">{threat.value}</td>
-                    <td className="py-3 px-4 text-foreground">{Math.round(threat.value * 0.92)}</td>
+                    <td className="py-3 px-4 text-foreground">{threat.count}</td>
+                    <td className="py-3 px-4 text-foreground">{Math.round(threat.count * (preventionRate / 100))}</td>
                     <td className="py-3 px-4">
-                      <span className="text-success font-semibold">92%</span>
+                      <span className="text-success font-semibold">{preventionRate}%</span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-warning flex items-center gap-1">
-                        <TrendingUp size={14} /> +12%
+                        <TrendingUp size={14} /> Live
                       </span>
                     </td>
                   </tr>

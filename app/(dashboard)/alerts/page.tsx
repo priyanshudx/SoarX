@@ -11,10 +11,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { AlertTriangle, Search, Download, Filter, ChevronUp, ChevronDown, Server } from 'lucide-react';
 import { useAlerts } from '@/hooks/use-alerts';
 import { useAuth } from '@/context/auth-context';
 import type { SecurityAlert } from '@/lib/alerts-service';
+import { resetAlerts } from '@/lib/soarx-api';
 
 type SortField = 'timestamp' | 'riskScore' | 'severity';
 type SortOrder = 'asc' | 'desc';
@@ -263,9 +274,32 @@ function shortAlertDescription(description: string, maxLength = 96): string {
   return `${compact.slice(0, maxLength - 3)}...`;
 }
 
+function escapeCsvValue(value: unknown): string {
+  const normalized = String(value ?? '').replace(/"/g, '""');
+  return `"${normalized}"`;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: Array<Array<unknown>>): void {
+  const csvLines = [
+    headers.map(escapeCsvValue).join(','),
+    ...rows.map((row) => row.map(escapeCsvValue).join(',')),
+  ];
+  const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
 export default function AlertsPage() {
   const { user } = useAuth();
-  const { alerts, isLoading: loading, error } = useAlerts(200, user?.email);
+  const { alerts, isLoading: loading, error, refresh } = useAlerts(1000, user?.email);
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -273,6 +307,9 @@ export default function AlertsPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [selectedAlert, setSelectedAlert] = useState<SecurityAlert | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [actionMessage, setActionMessage] = useState('');
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -335,6 +372,52 @@ export default function AlertsPage() {
     }
   };
 
+  const handleDeleteAllLogs = async () => {
+    const source = (user?.email || '').trim();
+    if (!source) {
+      setActionMessage('Unable to delete logs: missing user source.');
+      return;
+    }
+
+    setIsResetting(true);
+    setActionMessage('');
+
+    try {
+      const result = await resetAlerts({ source });
+      setSearchTerm('');
+      setSeverityFilter('all');
+      setStatusFilter('all');
+      setSortField('timestamp');
+      setSortOrder('desc');
+      await refresh();
+      setActionMessage(`Deleted ${result.deleted} log(s).`);
+      setIsDeleteConfirmOpen(false);
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to delete logs.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleExport = () => {
+    if (filtered.length === 0) return;
+
+    const headers = ['id', 'title', 'description', 'severity', 'riskScore', 'source', 'targetIp', 'status', 'timestamp'];
+    const rows = filtered.map((alert) => [
+      alert.id,
+      alert.title,
+      alert.description,
+      alert.severity,
+      alert.riskScore,
+      alert.source,
+      alert.targetIp,
+      alert.status,
+      alert.timestamp,
+    ]);
+
+    downloadCsv(`alerts-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, headers, rows);
+  };
+
   const selectedInsight = selectedAlert ? buildAlertInsight(selectedAlert) : null;
 
   return (
@@ -345,6 +428,7 @@ export default function AlertsPage() {
           <h1 className="text-3xl font-bold text-foreground mb-2">Security Alerts</h1>
           <p className="text-muted-foreground">Real-time threat detection and alert management</p>
           {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+          {actionMessage && <p className="text-sm text-muted-foreground mt-2">{actionMessage}</p>}
         </div>
 
         {/* Summary Cards */}
@@ -419,11 +503,27 @@ export default function AlertsPage() {
 
             {/* Action Buttons */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-border"
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                disabled={
+                  isResetting || alerts.length === 0
+                }
+              >
                 <Filter size={16} className="mr-2" />
-                Reset
+                {isResetting ? 'Deleting...' : 'Delete All Logs'}
               </Button>
-              <Button variant="outline" size="sm" className="border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-border"
+                onClick={handleExport}
+                disabled={filtered.length === 0}
+              >
                 <Download size={16} className="mr-2" />
                 Export
               </Button>
@@ -658,6 +758,27 @@ export default function AlertsPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete All Logs?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete all logs tied to your account source. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAllLogs}
+                className="bg-destructive text-white hover:bg-destructive/90"
+                disabled={isResetting}
+              >
+                {isResetting ? 'Deleting...' : 'Yes, Delete All'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </main>
   );

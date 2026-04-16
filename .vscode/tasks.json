@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build SoarX",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run SoarX",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"start"
+			],
+			"isBackground": true
+		}
+	]
+}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fetchSecurityAlerts, type SecurityAlert } from '@/lib/alerts-service';
+import { supabase } from '@/lib/supabase';
 
 export function useAlerts(limit = 100, userEmail?: string) {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
@@ -26,6 +27,32 @@ export function useAlerts(limit = 100, userEmail?: string) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!supabase || !userEmail) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`alerts:${userEmail}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'alerts',
+          filter: `source=eq.${userEmail}`,
+        },
+        () => {
+          refresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [refresh, userEmail]);
 
   return {
     alerts,

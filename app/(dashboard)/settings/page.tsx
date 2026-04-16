@@ -24,7 +24,6 @@ export default function SettingsPage() {
   const [isSigningOutAllSessions, setIsSigningOutAllSessions] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
-  const [importSource, setImportSource] = useState('');
   const [importText, setImportText] = useState('[\n  {\n    "message": "Multiple 401 responses from same IP",\n    "level": "warning",\n    "target_ip": "203.0.113.10"\n  }\n]');
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
@@ -67,7 +66,6 @@ export default function SettingsPage() {
       email: user.email || '',
     }));
 
-    setImportSource((prev) => prev || user.email || '');
   }, [user]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -275,6 +273,7 @@ export default function SettingsPage() {
           }
 
           const candidate = entry as Record<string, unknown>;
+          const { source: _ignoredSource, ...candidateWithoutSource } = candidate;
           const message = typeof candidate.message === 'string' ? candidate.message : undefined;
           const log =
             typeof candidate.log === 'string'
@@ -288,7 +287,7 @@ export default function SettingsPage() {
           }
 
           return {
-            ...candidate,
+            ...candidateWithoutSource,
             ...(message ? { message } : {}),
             ...(log ? { log } : {}),
           };
@@ -299,8 +298,12 @@ export default function SettingsPage() {
         throw new Error('Each log entry must include at least message or log (or be a non-empty string).');
       }
 
+      if (!user?.email) {
+        throw new Error('Unable to import logs: missing authenticated user email.');
+      }
+
       const result = await importServerLogs({
-        source: importSource.trim() || user?.email || 'server-log-import',
+        source: user.email,
         logs: normalizedLogs,
       });
 
@@ -666,12 +669,12 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Source Label</label>
+                <label className="block text-sm font-medium text-foreground mb-2">User</label>
                 <Input
-                  value={importSource}
-                  onChange={(e) => setImportSource(e.target.value)}
-                  className="bg-secondary border-border text-foreground"
-                  placeholder="nginx-prod"
+                  value={user?.email || ''}
+                  disabled
+                  readOnly
+                  className="bg-secondary border-border text-muted-foreground"
                 />
               </div>
               <div>
