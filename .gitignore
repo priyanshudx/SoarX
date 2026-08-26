@@ -11,3 +11,13 @@ node_modules/
 
 # Secrets
 backend/.env
+
+# Python cache & compiled files
+__pycache__/
+*.pyc
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
